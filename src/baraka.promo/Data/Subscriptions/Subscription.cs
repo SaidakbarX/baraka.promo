@@ -9,7 +9,7 @@ namespace baraka.promo.Data.Subscriptions
         [StringLength(400)]
         public string NameUz { get; set; }
         [StringLength(300)]
-        public string ProductId { get; set; }
+        public string? ProductId { get; set; }
         public int MaxCount { get; set; }
         public bool IsActive { get; set; }
         public bool IsDeleted { get; set; }

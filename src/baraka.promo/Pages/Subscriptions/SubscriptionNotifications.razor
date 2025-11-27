@@ -81,7 +81,7 @@
         try
         {
             var subscriptions = await Db.Subscriptions
-                .Where(s => !s.IsDeleted && s.InapType != InapType.None)
+             .Where(s => !s.IsDeleted && s.InapType >= InapType.None)
                 .OrderByDescending(s => s.CreatedTime)
                 .Select(s => new NotificationModel
                 {
