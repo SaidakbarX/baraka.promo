@@ -1,0 +1,21 @@
+﻿@inject DialogService dialogService
+
+<div class="row">
+    <label class="col-12">Номер телефона</label>
+    <div class="col-12">
+        <RadzenMask Mask="*** ** *** ** **" CharacterPattern="[0-9]" Placeholder="998 00 000 00 00" Name="Phone" @bind-Value=@phone
+                    Style="width: 100%;" aria-label="Phone" />
+    </div>
+</div>
+<div class="row float-right mt-3">
+    <div class="col-12">
+        <div class="float-end">
+            <RadzenButton Click="@(args => dialogService.Close(phone))" Text="Добавить" Style="width: 150px" />
+            <RadzenButton Click="@(args => dialogService.Close())" ButtonStyle="ButtonStyle.Light" Text="Отменить" Style="width: 150px" />
+        </div>
+    </div>
+</div>
+
+@code {
+    string? phone;
+}

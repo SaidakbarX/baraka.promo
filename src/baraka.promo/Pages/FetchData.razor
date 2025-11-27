@@ -1,0 +1,47 @@
+﻿@page "/fetchdata"
+
+<PageTitle>Weather forecast</PageTitle>
+
+@inject DeliveryDbContext delivery
+
+<h1>Weather forecast</h1>
+
+<p>This component demonstrates fetching data from a service.</p>
+
+@if (regions == null)
+{
+    <p><em>Loading...</em></p>
+}
+else
+{
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Id</th>
+                <th>ru</th>
+                <th>uz</th>
+                <th>en</th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var forecast in regions)
+            {
+                <tr>
+                    <td>@forecast.Id</td>
+                    <td>@forecast.Name_Ru</td>
+                    <td>@forecast.Name_Uz</td>
+                    <td>@forecast.Name_En</td>
+                </tr>
+            }
+        </tbody>
+    </table>
+}
+
+@code {
+    private List<Region>? regions;
+
+    protected override void OnInitialized()
+    {
+        regions = delivery.Regions.ToList();
+    }
+}

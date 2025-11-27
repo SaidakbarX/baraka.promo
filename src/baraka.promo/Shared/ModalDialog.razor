@@ -1,0 +1,92 @@
+﻿@if (showDialog)
+{
+    <div class="modal-dialog-background" style="z-index:5;"></div>
+    <div role="dialog" class="modal" @attributes="@DialogAttributes">
+        <div class="modal-dialog w-100" role="document" style="@GetStyle()">
+            <div class="modal-content w-100 h-100">
+                @if (ShowClose || !string.IsNullOrWhiteSpace(Title))
+                {
+                    <div class="modal-header w-100">
+                        <h4 class="modal-title">@Title</h4>
+                        <button type="button" class="btn-outline-danger" style="font-size: 0.8rem" @onclick="@(e => CloseClick())">×</button>
+                    </div>
+                }
+                <div class="modal-body form-group center-block w-100 h-100">
+                    @BodyContent
+                </div>
+                @if (FooterContent != null)
+                {
+                    <div class="modal-footer w-100">
+                        @FooterContent
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+
+    [Parameter(CaptureUnmatchedValues = true)]
+    public Dictionary<string, object> DialogAttributes { get; set; }
+    [Parameter]
+    public RenderFragment BodyContent { get; set; }
+    [Parameter]
+    public RenderFragment FooterContent { get; set; }
+    [Parameter]
+    public string Title { get; set; }
+    [Parameter]
+    public string Width { get; set; }
+    [Parameter]
+    public string MinWidth { get; set; }
+    [Parameter]
+    public EventCallback OnCloseClick { get; set; }
+    [Parameter]
+    public EventCallback OnValidSubmit { get; set; }
+    [Parameter]
+    public object Model { get; set; }
+    [Parameter]
+    public bool ShowClose { get; set; }
+
+    async Task OnValidSubmitClick(EditContext e)
+    {
+        await OnValidSubmit.InvokeAsync();
+    }
+    string GetStyle()
+    {
+        var sb = new System.Text.StringBuilder();
+        if (!string.IsNullOrWhiteSpace(Width))
+        {
+            if (Width == "full")
+                sb.Append("max-width:none;");
+            else
+                sb.Append($"max-width:{Width};");
+        }
+        if (!string.IsNullOrWhiteSpace(MinWidth))
+        {
+            sb.Append($"min-width:{MinWidth};");
+        }
+        return sb.ToString();
+    }
+
+    public bool IsShown { get => showDialog; }
+    bool showDialog = false;
+
+    public void Show()
+    {
+        showDialog = true;
+        StateHasChanged();
+    }
+    public void Close()
+    {
+        showDialog = false;
+        //StateHasChanged();
+    }
+    async void CloseClick()
+    {
+        if (!OnCloseClick.HasDelegate)
+            Close();
+        await OnCloseClick.InvokeAsync();
+    }
+
+}

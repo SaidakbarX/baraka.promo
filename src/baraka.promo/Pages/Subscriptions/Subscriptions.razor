@@ -1,0 +1,330 @@
+﻿@page "/subscriptions"
+
+@using Microsoft.EntityFrameworkCore;
+@using Microsoft.Extensions.Caching.Memory
+@using baraka.promo.Models.SubscriptionsModels;
+
+@inject IJSRuntime jsRuntime
+@inject ApplicationDbContext     _dbApp
+@inject NotificationService NotificationService
+@inject DialogService dialogService
+@inject NavigationManager NavigationManager
+@inject ILogger<Subscriptions> _logger
+@inject IServiceScopeFactory _factoryService
+
+@implements IDisposable
+
+<RadzenMenu Style="display:flex; justify-content:space-between; background-color:lightgray;" @attributes="@(new Dictionary<string, object>() { { "class", "header-menu-btn-toolbar" } })">
+    <div style="display:flex; justify-content:center; align-items:center; background-color:lightgray; padding:0px 10px; width:100%;">
+        <div style="flex:1; display:flex; justify-content:start; flex-direction:row; align-items:center;">
+            <span class="header-text">Подписки</span>
+            <RadzenMenuItemEx Icon="note_add" Click="@Add" Text="Добавлять"></RadzenMenuItemEx>
+
+
+            @if (selectedItem != null)
+            {
+                <RadzenMenuItemEx Icon="edit" Text="Редактировать" Click="@(args => { Edit(selectedItem); })"></RadzenMenuItemEx>
+                <RadzenMenuItemEx Icon="delete" Text="Удалить"
+                                  Click="@(args => ConfirmDelete(selectedItem))"></RadzenMenuItemEx>
+            }
+
+        </div>
+        
+    </div>
+</RadzenMenu>
+
+<RadzenDataGrid @ref="grid"  Data="@subscriptionModels"
+                AllowSorting="true"
+                TItem="SubscriptionModel"
+                RowSelect="RowSingleClick"                                                                                                                     
+                RowDoubleClick="RowDoubleClickHandler"
+                @bind-Value=selectedItems
+                SelectionMode="DataGridSelectionMode.Single"
+                AllowPaging="true" PageSize="50" Style="height:calc(100vh - 150px)">
+                @* @ref="grid"
+                Data="@groups"
+                TItem="SubscriptionGroupModel"
+                AllowPaging="true"
+                AllowSorting="true"
+                SelectionMode="DataGridSelectionMode.Single"
+                @bind-Value="@selectedItems"
+                RowDoubleClick="@OnRowDoubleClick"
+                PageSize="30"
+                Style="height:calc(100vh - 150px)"> *@
+    <Columns>
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="Id" Title="ID" Width="80px" />
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="NameUz" Title="Названия (UZ)" Width="200px" />
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="NameRu" Title="Названия (RU)" Width="200px" />
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="NameEn" Title="Названия (EN)" Width="200px" />
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="ProductId" Title="Product ID" Width="150px" />
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="Price" Title="Price" Width="100px">
+            <Template Context="data">
+                @data.Price.ToString("N2")
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="MaxCount" Title="Максимальное количество" Width="100px" />
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="ClientsCount" Title="Клиенты" Width="100px" />
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="GroupId" Title="
+Идентификатор группы" Width="100px" />
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="CreatedTime" Title="Создано в" FormatString="{0:dd.MM.yyyy HH:mm}" Width="150px" />
+        <RadzenDataGridColumn TItem="SubscriptionModel" Property="IsActive" Title="Статус" Width="100px">
+            <Template Context="data">
+                @if (data.IsActive)
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Активный" />
+                }
+                else
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="Неактивный" />
+                }
+            </Template>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    [CascadingParameter]
+    public Task<AuthenticationState>? AuthTask { get; set; }
+
+    RadzenDataGrid<SubscriptionModel>? grid = new RadzenDataGrid<SubscriptionModel>();
+    int TotalCount;
+    List<SubscriptionModel> subscriptionModels = new List<SubscriptionModel>();
+    IList<SubscriptionModel> selectedItems = new List<SubscriptionModel>();
+
+    SubscriptionModel? selectedItem => selectedItems?.FirstOrDefault();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadData();
+    }
+
+    async void OnChange()
+    {
+        await LoadData();
+    }
+
+    void Add()
+    {
+        NavigationManager.NavigateTo("/add_subscription");
+    }
+
+    void Edit(SubscriptionModel subscription)
+    {
+        if (subscription != null)
+        {
+            NavigationManager.NavigateTo($"/edit_subscription/{subscription.Id}");
+        }
+    }
+
+    void RowSingleClick(SubscriptionModel subscription)
+    {
+    }
+
+    void RowDoubleClickHandler(DataGridRowMouseEventArgs<SubscriptionModel> args)
+    {
+        if (args.Data != null)
+        {
+            NavigationManager.NavigateTo($"/edit_subscription/{args.Data.Id}");
+        }
+    }
+
+    private async Task ConfirmDelete(SubscriptionModel subscription)
+    {
+        var result = await dialogService.Confirm("Вы уверены, что хотите удалить эту подписку?", "Подтверждение удаления",
+            new ConfirmOptions() { OkButtonText = "Да", CancelButtonText = "Нет" });
+
+        if (result == true)
+        {
+            await DeleteSubscription(subscription);
+        }
+    }
+
+    private async Task DeleteSubscription(SubscriptionModel subscription)
+    {
+        try
+        {
+            var sub = await _dbApp.Subscriptions.FirstOrDefaultAsync(s => s.Id == subscription.Id && !s.IsDeleted);
+            if (sub == null)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Warning,
+                    Summary = "Ошибка",
+                    Detail = "Подписка не найдена.",
+                    Duration = 3000
+                });
+                return;
+            }
+
+            sub.IsDeleted = true;
+            await _dbApp.SaveChangesAsync();
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Удалено",
+                Detail = "Подписка успешно удалена.",
+                Duration = 3000
+            });
+
+            await LoadData();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Ошибка",
+                Detail = ex.Message,
+                Duration = 4000
+            });
+            _logger.LogError(ex, "Error deleting subscription with ID {Id}", subscription.Id);
+        }
+    }
+
+    private async Task LoadData()
+    {
+        try
+        {
+            var selectitem = selectedItems?.Count > 0 ? selectedItems[0] : null;
+            using var scope = _factoryService.CreateScope();
+            var _db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+            var query = _db.Subscriptions
+                .Where(s => !s.IsDeleted)
+                .AsQueryable();
+
+           
+            var subscriptions = await query.Select(s => new SubscriptionModel
+            {
+                Id = s.Id,
+                NameUz = s.NameUz,
+                NameRu = s.NameRu,
+                NameEn = s.NameEn,
+                ProductId = s.ProductId,
+                MaxCount = s.MaxCount,
+                IsActive = s.IsActive,
+                GroupId = s.GroupId,
+                Price = s.Price,
+                CreatedTime = s.CreatedTime,
+                MXIK = s.MXIK,
+                ShortContent_Purchase_En = s.ShortContent_Purchase_En,
+                ShortContent_Purchase_Ru = s.ShortContent_Purchase_Ru,
+                ShortContent_Purchase_Uz = s.ShortContent_Purchase_Uz,
+                PackageCode = s.PackageCode,
+                Vat = s.Vat,
+                UnitCode = s.UnitCode,
+                NamePurchaseUz = s.NamePurchaseUz,
+                NamePurchaseEn = s.NamePurchaseEn,
+                NamePurchaseRu = s.NamePurchaseRu,
+                ShortContent_Uz = s.ShortContent_Uz,
+                ShortContent_Ru = s.ShortContent_Ru,
+                ShortContent_En = s.ShortContent_En,
+                Content_Uz = s.Content_Uz,
+                Content_Ru = s.Content_Ru,
+                Content_En = s.Content_En,
+                Content_Purchase_Uz = s.Content_Purchase_Uz,
+                Content_Purchase_Ru = s.Content_Purchase_Ru,
+                Content_Purchase_En = s.Content_Purchase_En,
+                ImageUrlUz = s.ImageUrlUz,
+                ImageUrlRu = s.ImageUrlRu,
+                ImageUrlEn = s.ImageUrlEn,
+                ImageUrl_Purchase_Uz = s.ImageUrl_Purchase_Uz,
+                ImageUrl_Purchase_Ru = s.ImageUrl_Purchase_Ru,
+                ImageUrl_Purchase_En = s.ImageUrl_Purchase_En,
+                PromotionId = s.PromotionId,
+                CountryId = s.CountryId
+            })
+            .OrderByDescending(s => s.CreatedTime)
+            .ToListAsync();
+
+            var subscriptionIds = subscriptions.Select(s => s.Id).ToList();
+            var clientCounts = await _db.SubscriptionClients
+                .Where(sc => subscriptionIds.Contains(sc.SubscriptionId))
+                .GroupBy(sc => sc.SubscriptionId)
+                .Select(g => new { SubscriptionId = g.Key, Count = g.Count() })
+                .ToListAsync();
+
+            foreach (var subscription in subscriptions)
+            {
+                var clientCount = clientCounts.FirstOrDefault(cc => cc.SubscriptionId == subscription.Id);
+                subscription.ClientsCount = clientCount?.Count ?? 0;
+            }
+
+            subscriptionModels = subscriptions;
+            TotalCount = subscriptionModels.Count;
+
+            if (selectitem != null)
+            {
+                var existingItem = subscriptionModels.FirstOrDefault(s => s.Id == selectitem.Id);
+                if (existingItem != null)
+                {
+                    selectedItems = new List<SubscriptionModel> { existingItem };
+                }
+            }
+
+            await InvokeAsync(() => StateHasChanged());
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Error",
+                Detail = ex.Message,
+                Duration = 4000
+            });
+            _logger.LogError(ex, "Error loading subscriptions");
+        }
+    }
+   
+
+    bool isDisposed = false;
+    public void Dispose()
+    {
+        isDisposed = true;
+    }
+
+    public class SubscriptionModel
+    {
+        public long Id { get; set; }
+        public string NameUz { get; set; }
+        public string? NameRu { get; set; }
+        public string? NameEn { get; set; }
+        public string ProductId { get; set; }
+        public int MaxCount { get; set; }
+        public int ClientsCount { get; set; }
+        public bool IsActive { get; set; }
+        public string MXIK { get; set; }
+        public bool IsDeleted { get; set; }
+        public long GroupId { get; set; }
+        public decimal Price { get; set; }
+        public DateTime CreatedTime { get; set; }
+        public string PackageCode { get; set; }
+        public int Vat { get; set; }
+        public string? UnitCode { get; set; }
+        public string NamePurchaseUz { get; set; }
+        public string? NamePurchaseEn { get; set; }
+        public string? NamePurchaseRu { get; set; }
+        public string? ShortContent_Purchase_Ru { get; set; }
+        public string? ShortContent_Purchase_Uz { get; set; }
+        public string? ShortContent_Purchase_En { get; set; }
+        public string? Content_Purchase_Ru { get; set; }
+        public string? Content_Purchase_Uz { get; set; }
+        public string? Content_Purchase_En { get; set; }
+        public string? ImageUrl_Purchase_Ru { get; set; }
+        public string? ImageUrl_Purchase_Uz { get; set; }
+        public string? ImageUrl_Purchase_En { get; set; }
+        public string? PromotionId { get; set; }
+        public string? ShortContent_Uz { get; set; }
+        public string? ShortContent_Ru { get; set; }
+        public string? ShortContent_En { get; set; }
+        public string? Content_Uz { get; set; }
+        public string? Content_Ru { get; set; }
+        public string? Content_En { get; set; }
+        public string? ImageUrlUz { get; set; }
+        public string? ImageUrlRu { get; set; }
+        public string? ImageUrlEn { get; set; }
+        public int CountryId { get; set; }
+    }
+}

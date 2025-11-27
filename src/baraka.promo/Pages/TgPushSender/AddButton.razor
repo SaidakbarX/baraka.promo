@@ -1,0 +1,120 @@
+﻿@using Newtonsoft.Json;
+@using baraka.promo.Models.TgMessageModel;
+
+@inject DialogService _dialogService
+@inject NotificationService _notificationService
+@inject ApplicationDbContext _dbApp
+@inject ILogger<EditMessage> _logger
+
+@*<div>
+    <RadzenCard>
+        <RadzenTextBox @bind-Value=@tgButtonModel.Name Placeholder="Название кнопки"/>
+        <RadzenTextBox @bind-Value=@tgButtonModel.Url Placeholder="URL" />
+    </RadzenCard>
+</div>*@
+<EditForm Model="tgButtonModel" OnValidSubmit="Add">
+    <div class="row">
+        <div class="col-12">
+            <div class="form-group d-flex justify-content-center" style="display: flex; flex-direction: column; align-items: baseline; row-gap: 10px; margin-bottom: 10px;">
+                <RadzenTextBox @bind-Value=@tgButtonModel.Name Placeholder="Название кнопки" Style="width: -webkit-fill-available;" />
+                <RadzenTextBox @bind-Value=@tgButtonModel.Url Placeholder="URL (https://www.google.com/)" Style="width: 100%" />
+                <ValidationMessage For="@(()=>tgButtonModel.Url)"></ValidationMessage>
+                @*<RadzenCustomValidator Component="Url" Validator="@(() => ValidateNewButton(tgButtonModel.Url))" Text="Url must start with https://" Popup=@popup />*@
+                @*<RadzenRegexValidator Component="Url" Text="Url must start with https://" Pattern="^https://.*$" Popup=@popup  />*@
+
+                <RadzenButton ButtonType="ButtonType.Submit" Text="Добавлять" ButtonStyle="ButtonStyle.Success" Style="width: 150px" />
+            </div>
+        </div>
+    </div>
+
+    @*<div class="row position-absolute" style="bottom:1.25rem;right:1.25rem">
+    <div class="col-12">
+    </div>
+    </div>*@
+    <ObjectGraphDataAnnotationsValidator />
+</EditForm>
+<RadzenDataGrid @ref="grid" Count="@totalCount" Data="@tglist"
+                AllowSorting="false"
+                TItem="TgButtonModel"
+                SelectionMode="DataGridSelectionMode.Single"
+                AllowFiltering="false" AllowPaging="true" PageSize="50">
+    <Columns>
+
+        <RadzenDataGridColumn TItem="TgButtonModel" Property="Name" Title="Название кнопки" />
+        <RadzenDataGridColumn TItem="TgButtonModel" Property="Url" Title="URL " />
+        <RadzenDataGridColumn TItem="TgButtonModel">
+            <Template Context="data">
+                <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Click="@(() => Delete(data))" />
+            </Template>
+        </RadzenDataGridColumn>
+
+    </Columns>
+</RadzenDataGrid>
+<div style="display:flex; align-items:end; bottom:1.25rem;right:1.25rem; width:100%; justify-content:flex-end; margin: 10px 0px; gap: 10px;">
+
+    <RadzenButton ButtonType="ButtonType.Submit" Click="@Save" Text="Сохранять" Style="width: 150px" />
+    <RadzenButton Click="@Close" ButtonStyle="ButtonStyle.Secondary" Text="Закрывать" Style="width: 150px" />
+</div>
+
+@code {
+    [Parameter]
+    public string? Buttons { get; set; }
+
+    RadzenDataGrid<TgButtonModel>? grid = new RadzenDataGrid<TgButtonModel>();
+    TgButtonModel tgButtonModel = new TgButtonModel();
+    List<TgButtonModel> tglist = new List<TgButtonModel>();
+    int totalCount;
+    bool popup;
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrEmpty(Buttons))
+        {
+            var list = JsonConvert.DeserializeObject<List<TgButtonModel>>(Buttons);
+
+            tglist = list;
+            totalCount = list.Count();
+            StateHasChanged();
+            grid.Reload();
+        }
+        base.OnInitialized();
+    }
+
+    bool ValidateNewButton(string url)
+    {
+        return !url.StartsWith("https://");
+    }
+
+    public void Save()
+    {
+        if (tglist != null && tglist.Count > 0)
+        {
+            var buttonsJson = JsonConvert.SerializeObject(tglist);
+            _dialogService.Close(buttonsJson);
+        }
+    }
+
+    public void Add()
+    {
+        if (tgButtonModel != null && !tglist.Any(a => a.Name == tgButtonModel.Name))
+        {
+            tglist.Add(tgButtonModel);
+            tgButtonModel = new TgButtonModel();
+            totalCount = tglist.Count();
+            StateHasChanged();
+            grid.Reload();
+        }
+    }
+
+    public void Delete(TgButtonModel model)
+    {
+        tglist.Remove(model);
+        StateHasChanged();
+        grid.Reload();
+    }
+
+    public void Close()
+    {
+        _dialogService.Close(null);
+    }
+}

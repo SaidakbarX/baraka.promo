@@ -1,0 +1,106 @@
+﻿@page "/userlist"
+@using baraka.promo.Pages.Promos;
+@using baraka.promo.Pages.Users;
+@*@attribute [Authorize]*@
+
+@using static baraka.promo.Pages.Users.UserAddModel;
+
+@inject DialogService dialogService
+@inject UserAddModel newUser
+
+<RadzenMenu Style="display:flex; justify-content:space-between; background-color:lightgray;" @attributes="@(new Dictionary<string, object>() { { "class", "header-menu-btn-toolbar" } })">
+    <div style="display:flex; justify-content:center; align-items:center; background-color:lightgray; padding-left:10px;">
+        <span class="header-text">Пользователи</span>
+
+        <RadzenMenuItemEx Icon="add_circle" Click="@Add" Text="Добавить"></RadzenMenuItemEx>
+        @if (selectedItem != null)
+        {
+            <RadzenMenuItemEx Icon="edit" Text="Редактировать" Click="@(args => { Edit(selectedItem); })"></RadzenMenuItemEx>
+            <RadzenMenuItemEx Icon="stream" Text="Изменитьпароль" Click="@(args => { ChangePassword(selectedItem); })"></RadzenMenuItemEx>
+            <RadzenMenuItemEx Icon="delete" Text="Удалить"
+                              Click="@(args => confirm.Show("Подтверждать", "Подтвердите удаление", selectedItem))"></RadzenMenuItemEx>
+        }
+
+
+    </div>
+    @* <div class="d-flex align-items-center">
+
+    <RadzenMenuItemEx Icon="stream" Text="Сгенерировать пароль"
+    Click="@(args => generatePasswordConfirm.Show(L["ConfirmTitle"], "Вы действительно хотите изменить пароль?", selectedItem))"></RadzenMenuItemEx>
+
+    <RadzenDropDown Style="max-width:fit-content;" TValue="Guid?" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" class="col-12"
+    AllowClear="true" @bind-Value="ViewModel.SelectedCompanyId" Multiple="false"
+    Data="@ViewModel.Companies" TextProperty="Name" ValueProperty="Id" SelectedItemChanged="@treeChange">
+    </RadzenDropDown>
+
+    <span class="menu-btn-toolbar-splitter"></span>
+    <RadzenMenuItemEx Icon="refresh" Click="@(args=>{ grid.Reload(); })"></RadzenMenuItemEx>
+    </div>*@
+
+</RadzenMenu>
+<RadzenGrid @ref="grid" Count="@newUser.TotalCount" Data="@newUser.Users"
+            LoadData="@newUser.LoadData" AllowSorting="false" TItem="UsersList"
+            AllowFiltering="false" AllowPaging="true" PageSize="50" Style="height:calc(100vh - 150px)"
+            Value="@selectedItem" RowSelect="@(args => selectedItem = args)"
+            RowDoubleClick="@(args =>{ Edit(selectedItem); })">
+    <Columns>
+        <RadzenGridColumn TItem="UsersList" Property="UserName" Title="Имя пользователя" />
+    </Columns>
+</RadzenGrid>
+
+<Confirm TItem="UsersList" @ref="confirm" OnConfirm="@OnConfirmDelete" />
+
+
+@code {
+    Confirm<UsersList>? confirm;
+    RadzenGrid<UsersList>? grid;
+    UsersList selectedItem;
+
+    void ItemClose(dynamic result)
+    {
+        dialogService.OnClose -= ItemClose;
+        if (result != null)
+        {
+            grid.Reload();
+        }
+        StateHasChanged();
+    }
+
+    private async Task OnConfirmDelete(UsersList obj)
+    {
+        if (await newUser.Delate(obj))
+            selectedItem = null;
+
+        await grid.Reload();
+    }
+
+    private async void Add()
+    {
+        dialogService.OnClose += ItemClose;
+
+        dialogService.Open<Add>("Add",
+        new Dictionary<string, object>() { },
+        new DialogOptions() { Width = "600px", Height = "600px" });
+
+        await grid.Reload();
+    }
+    private async void Edit(UsersList item)
+    {
+        dialogService.OnClose += ItemClose;
+        dialogService.Open<Edit>("Edit",
+            new Dictionary<string, object>() { { "Model", Newtonsoft.Json.JsonConvert.SerializeObject(item) } },
+            new DialogOptions() { Width = "600px", Height = "420px" });
+
+        await grid.Reload();
+    }
+
+    private async void ChangePassword(UsersList item)
+    {
+        dialogService.OnClose += ItemClose;
+        dialogService.Open<ChangePassword>("ChangePassword",
+            new Dictionary<string, object>() { { "Model", Newtonsoft.Json.JsonConvert.SerializeObject(item) } },
+            new DialogOptions() { Width = "400px", Height = "400px" });
+
+        await grid.Reload();
+    }
+}

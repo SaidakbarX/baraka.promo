@@ -1,0 +1,158 @@
+﻿@using baraka.promo.Models
+@using baraka.promo.Models.PromoModels.NewPromoModels
+@using baraka.promo.Services.Promo
+@inherits BaseRazorComponent
+@inject PromoService promoService
+
+
+
+<RadzenStack Gap="1rem" Orientation="Orientation.Horizontal">
+
+
+    <RadzenGrid PageSize="_pageSize" AllowPaging="true"
+                LoadData="LoadData"
+                Count="_total"
+                SelectionMode="DataGridSelectionMode.Single"
+                Page="@(e=> PageIndexChanged(e))"
+                Style="@($"{(!FromGroupped? "height:calc(100vh - 200px)" : "")}")"
+                RowSelect="@(args => RowSelect(args))" RowDoubleClick="@(args =>{ GoTo($"/promo/{args.Id}"); })"
+                Data="@promos" TItem="PromoModel">
+        <Columns>
+            <RadzenGridColumn TItem="PromoModel" Property="@nameof(PromoModel.Name)" Title="Название" />
+
+            <RadzenGridColumn TItem="PromoModel" Property="MaxCount" Title="Макс. использование" Width="160px" />
+
+            <RadzenGridColumn TItem="PromoModel" Property="StartTime" Title="Время начала">
+                <Template Context="promoModel">
+                    @DateToDisplay(promoModel.StartTime, true)
+                </Template>
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="EndTime" Title="Время окончания">
+                <Template Context="promoModel">
+                    @DateToDisplay(promoModel.EndTime, true)
+                </Template>
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="MinOrderAmount" Title="Сумма заказа (мин.)">
+                <Template Context="promoModel">
+                    @MoneyToDisplay(promoModel.MinOrderAmount, divideTo100: true)
+                </Template>
+
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="MaxOrderAmount" Title="Сумма заказа (макс.)">
+                <Template Context="promoModel">
+                    @MoneyToDisplay(promoModel.MaxOrderAmount, divideTo100: true)
+                </Template>
+
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="OrderDiscount" Title="Скидка" Width="80px">
+                <Template Context="promoModel">
+                    @if (promoModel.OrderDiscount.HasValue)
+                    {
+                        <span>
+                            @promoModel.OrderDiscount%
+                        </span>
+                    }
+                </Template>
+
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="@(nameof(PromoModel.View))" Title="Механика">
+                <Template Context="promoModel">
+                    @(EnumHelper<PromoView>.EnumToString(promoModel.View))
+                </Template>
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="View" Title="Аудитория">
+                <Template Context="data">
+                    @(EnumHelper<PromoType>.EnumToString(data.Type))
+                </Template>
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="IsActive" Title="Статус" Width="120px">
+                <Template Context="data">
+                    @if (data.IsActive)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Активный" />
+                    }
+                    else
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Не ктивный" />
+                    }
+                </Template>
+            </RadzenGridColumn>
+
+
+            <RadzenGridColumn TItem="PromoModel" Property="TotalCount" Title="Общий" Width="80px" />
+            <RadzenGridColumn TItem="PromoModel" Property="TotalUsedCount" Title="Исползвино" Width="100px" />
+        </Columns>
+    </RadzenGrid>
+</RadzenStack>
+
+
+@code {
+    [Parameter]
+    public int GroupId { get; set; }
+    [Parameter]
+    public bool FromGroupped { get; set; }
+    [Parameter]
+    public bool NotGroupped { get; set; }
+
+    [Parameter]
+    public bool IsArchive { get; set; }
+    [Parameter]
+    public EventCallback<PromoModel> SelectionChanged { get; set; }
+    [Parameter]
+    public string searchTextValue { get; set; } = "";
+    [Parameter]
+    public List<string> SelectedMachanicTypes { get; set; } = new();
+    [Parameter]
+    public List<string> SelectedAuditoryTypes { get; set; } = new();
+
+
+
+    List<PromoGroupModel> promoGroups = new();
+    PromoModel selectedItem = new();
+    List<PromoModel> promos = new List<PromoModel>();
+
+
+    RadzenDataGrid<PromoModel> grid;
+    protected override void OnInitialized()
+    {
+        if (!FromGroupped)
+            _pageSize = 20;
+        else
+            _pageSize = 5;
+
+    }
+
+    public void RowSelect(PromoModel promo)
+    {
+        selectedItem = promo;
+        SelectionChanged.InvokeAsync(promo);
+    }
+    public void Load(bool isArchive, List<string> promoMachanics, List<string> promoAuditoria, string search)
+    {
+        IsArchive = isArchive;
+        SelectedMachanicTypes = promoMachanics;
+        SelectedAuditoryTypes = promoAuditoria;
+        searchTextValue = search;
+        LoadData();
+    }
+
+    protected override async void LoadData()
+    {
+        _loading = true;
+        var res = await promoService.GroupedList(_pageSkip, _pageSize, searchTextValue, SelectedMachanicTypes, SelectedAuditoryTypes, GroupId, IsArchive, !NotGroupped);
+        _total = res.Total;
+        promos = res.List;
+
+        StateHasChanged();
+        _loading = false;
+    }
+
+}
+

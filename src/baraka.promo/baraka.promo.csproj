@@ -1,0 +1,100 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>aspnet-baraka.promo-51b8353b-386f-4733-9903-abd3688736af</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Content Remove="wwwroot\img\055ca29dd32a49aeb733076f6f42e9c5.png" />
+    <Content Remove="wwwroot\img\14a5bc7ea9f3449aa45ed422728813db.png" />
+    <Content Remove="wwwroot\img\33b76fda9f594323a7793cccb2dd5e2c.png" />
+    <Content Remove="wwwroot\img\33c63e4230a04f1db380fdd5989fc055.png" />
+    <Content Remove="wwwroot\img\358fb0d18f9a4030b9421bc7bbd93f9f.png" />
+    <Content Remove="wwwroot\img\4a765d7be57d420d923d3b9e316bde3d.png" />
+    <Content Remove="wwwroot\img\5c15ec64594b45b48c3bce8f19f8ff2f.png" />
+    <Content Remove="wwwroot\img\6484ba6550f34bf8b136ccb9834c0c73.png" />
+    <Content Remove="wwwroot\img\730e63caaa5443f79f8b48351fe88d30.png" />
+    <Content Remove="wwwroot\img\744c9600bd1d46808ab845dcbd44baf5.png" />
+    <Content Remove="wwwroot\img\86fb6a81b84f4e558a6118ca9d3d67e2.png" />
+    <Content Remove="wwwroot\img\878b7a71ac764bc69f4b5e66bf4f0ae4.png" />
+    <Content Remove="wwwroot\img\8cb1c78344f045d6b7445f9bbc665e65.png" />
+    <Content Remove="wwwroot\img\8e7e45ef3e5f4aa0968bb19af5b92c2c.png" />
+    <Content Remove="wwwroot\img\a01cb803c9374858b79ce8f5b52fc4eb.png" />
+    <Content Remove="wwwroot\img\a920777a274c4564b34802772035a05c.png" />
+    <Content Remove="wwwroot\img\ab7fb7213a0c4c4593437938866526cc.png" />
+    <Content Remove="wwwroot\img\c9bad3cdafe443e18f82e5d364eae9bf.png" />
+    <Content Remove="wwwroot\img\ca622e901daa49b98136d8a930a15f32.png" />
+    <Content Remove="wwwroot\img\d6a59f0aa2df4cf6b98f9e25082092c4.png" />
+    <Content Remove="wwwroot\img\e1749367dbd9429c9f265d943c5c1533.png" />
+    <Content Remove="wwwroot\img\ecc78f19875b4529b0f7d05819bbb520.png" />
+    <Content Remove="wwwroot\img\eec16279c09f489d87faacd2fb065371.png" />
+    <Content Remove="wwwroot\img\f4ce50f6ba6d4c629ab3a42b68a481f7.png" />
+    <Content Remove="wwwroot\img\f799968916264b72899db5c036643195.png" />
+    <Content Remove="wwwroot\img\ffb4ff59438a48ae9f41c0220c384a6f.png" />
+    <Content Remove="wwwroot\javascript\ExcelFunc.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <_ContentIncludedByDefault Remove="wwwroot\javascript\ExcelFunc.js" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BlazorDownloadFile" Version="2.1.6" />
+    <PackageReference Include="CsvHelper" Version="31.0.3" />
+    <PackageReference Include="DocumentFormat.OpenXml" Version="3.0.1" />
+    <PackageReference Include="EPPlus" Version="4.5.3.3" />
+	<PackageReference Include="Google.Apis.Auth" Version="1.70.0" />
+    <PackageReference Include="MediatR" Version="12.2.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.DataAnnotations.Validation" Version="3.2.0-rc1.20223.4" />
+    <PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="6.0.25" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="6.0.25" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="6.0.25" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.SqlServer" Version="6.0.25" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="6.0.25" />
+    <PackageReference Include="Microsoft.VisualStudio.Web.CodeGeneration.Design" Version="6.0.16" ExcludeAssets="All" />
+    <PackageReference Include="Moq" Version="4.20.70" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="Radzen.Blazor" Version="4.29.4" />
+    <PackageReference Include="Serilog.Extensions.Logging.File" Version="3.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="6.5.0" />
+    <PackageReference Include="Telegram.Bot" Version="19.0.0" />	
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="Logs\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="wwwroot\img\055ca29dd32a49aeb733076f6f42e9c5.png" />
+    <None Include="wwwroot\img\14a5bc7ea9f3449aa45ed422728813db.png" />
+    <None Include="wwwroot\img\33b76fda9f594323a7793cccb2dd5e2c.png" />
+    <None Include="wwwroot\img\33c63e4230a04f1db380fdd5989fc055.png" />
+    <None Include="wwwroot\img\358fb0d18f9a4030b9421bc7bbd93f9f.png" />
+    <None Include="wwwroot\img\4a765d7be57d420d923d3b9e316bde3d.png" />
+    <None Include="wwwroot\img\5c15ec64594b45b48c3bce8f19f8ff2f.png" />
+    <None Include="wwwroot\img\6484ba6550f34bf8b136ccb9834c0c73.png" />
+    <None Include="wwwroot\img\730e63caaa5443f79f8b48351fe88d30.png" />
+    <None Include="wwwroot\img\744c9600bd1d46808ab845dcbd44baf5.png" />
+    <None Include="wwwroot\img\86fb6a81b84f4e558a6118ca9d3d67e2.png" />
+    <None Include="wwwroot\img\878b7a71ac764bc69f4b5e66bf4f0ae4.png" />
+    <None Include="wwwroot\img\8cb1c78344f045d6b7445f9bbc665e65.png" />
+    <None Include="wwwroot\img\8e7e45ef3e5f4aa0968bb19af5b92c2c.png" />
+    <None Include="wwwroot\img\a01cb803c9374858b79ce8f5b52fc4eb.png" />
+    <None Include="wwwroot\img\a920777a274c4564b34802772035a05c.png" />
+    <None Include="wwwroot\img\ab7fb7213a0c4c4593437938866526cc.png" />
+    <None Include="wwwroot\img\c9bad3cdafe443e18f82e5d364eae9bf.png" />
+    <None Include="wwwroot\img\ca622e901daa49b98136d8a930a15f32.png" />
+    <None Include="wwwroot\img\d6a59f0aa2df4cf6b98f9e25082092c4.png" />
+    <None Include="wwwroot\img\e1749367dbd9429c9f265d943c5c1533.png" />
+    <None Include="wwwroot\img\ecc78f19875b4529b0f7d05819bbb520.png" />
+    <None Include="wwwroot\img\eec16279c09f489d87faacd2fb065371.png" />
+    <None Include="wwwroot\img\f4ce50f6ba6d4c629ab3a42b68a481f7.png" />
+    <None Include="wwwroot\img\f799968916264b72899db5c036643195.png" />
+    <None Include="wwwroot\img\ffb4ff59438a48ae9f41c0220c384a6f.png" />
+    <None Include="wwwroot\javascript\ExcelFunc.js" />
+  </ItemGroup>
+
+</Project>

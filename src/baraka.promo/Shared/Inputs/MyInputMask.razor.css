@@ -1,0 +1,122 @@
+﻿.inputGroup {
+    position: relative;
+}
+
+    .inputGroup input {
+        outline: none;
+        border-radius: 10px;
+        width: 100%;
+        background-color:darkgrey;
+        height: 40px;
+        padding-left: 56px;
+        font-size:16px;
+        width:fit-content;
+    }
+
+    .inputGroup label {
+        position: absolute;
+        left: 0;
+        margin-top: 8px;
+        margin-left: 16px;
+        pointer-events: none;
+        transition: all 0.3s ease;
+    }
+
+.inputGroup-kfc input {
+    border: 2px solid var(--border-color-kfc);
+}
+
+.inputGroup-costa input {
+    border: 2px solid var(--light-maroon);
+}
+
+.inputGroup-kfc label {
+    color: var(--input-label-kfc);
+}
+
+.inputGroup-costa label {
+    color: black;
+}
+
+.inputGroup :is(input:focus, input:valid) ~ label {
+    transform: translateY(-50%) scale(.9);
+    margin: 0em;
+    margin-left: 14px;
+    padding: 0.4em 0.4em 0px 0.4em;
+    background-color: darkgrey;
+    font-size: 10px;
+    display:none;
+}
+
+
+.static-label {
+    transform: translateY(-50%) scale(.9);
+    margin: 0em;
+    margin-left: 14px !important;
+    margin-top:0px !important;
+    padding: 0.4em 0.4em 0px 0.4em;
+    background-color: white;
+    font-size: 10px;
+}
+
+.inputGroup-kfc :is(input:focus, input:valid) ~ label {
+    color: var(--input-label-kfc);
+}
+
+.inputGroup-costa :is(input:focus, input:valid) ~ label {
+    color: var(--dark-maroon);
+}
+
+.inputGroup-kfc :is(input:focus, input:valid) {
+    border: 2px solid var(--border-color-kfc);
+}
+
+.inputGroup-costa :is(input:focus, input:valid)  .prefix {
+    border: 2px solid var(--light-maroon);
+}
+
+.inputGroup-kfc :is(input:focus, input:valid)  .prefix {
+    border: 2px solid var(--border-color-kfc);
+}
+
+.inputGroup-costa :is(input:focus, input:valid)  .prefix {
+    border: 2px solid var(--light-maroon);
+}
+
+.inputGroup :is(input:focus, input:valid)  .prefix {
+    display: block;
+    transition: all 0.3s ease;
+}
+.inputGroup:focus-within .prefix {
+    display: block;
+    transition: all 0.3s ease;
+}
+.imask-input{
+
+}
+.inputGroup:focus-within .imask-input {
+    padding-left:56px;
+}
+
+.display-none {
+    display: block;
+    position: absolute;
+    top: 50%;
+    font-size: 16px;
+    left: 16px; /* Adjust left positioning */
+    transform: translateY(-50%);
+    transition: all 0.3s ease;
+}
+.prefix {
+    display: none;
+    transition: all 0.3s ease;
+}
+
+/* Add styles for appearance and positioning as needed */
+.prefix {
+    position: absolute;
+    top: 50%;
+    font-size:16px;
+    left: 16px; /* Adjust left positioning */
+    transform: translateY(-50%);
+}

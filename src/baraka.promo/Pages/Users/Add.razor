@@ -1,0 +1,55 @@
+﻿@page "/useradd"
+
+@using Microsoft.AspNetCore.Identity;
+@using baraka.promo.Pages.Promos;
+@inject UserAddModel newUser
+@inject DialogService _dialogService
+@inject NotificationService _notificationService
+
+
+
+<EditForm Model="@newUser" OnValidSubmit="(e => newUser.Save())">
+    <div class="row">
+        <div class="col-12">
+            <div class="form-group">
+                <label>Имя пользователя</label>
+                <RadzenTextBox @bind-Value=@newUser.Model.UserName class="col-12" />
+                <ValidationMessage For="@(()=>newUser.Model.UserName)"></ValidationMessage>
+            </div>
+        </div>
+    </div>
+    <div class="row">
+        <div class="col-6">
+            <div class="form-group">
+                <label>Пароль</label>
+                <RadzenPassword @bind-Value=@newUser.Model.Password class="col-12" />
+                <ValidationMessage For="@(()=>newUser.Model.Password)"></ValidationMessage>
+            </div>
+        </div>
+        <div class="col-6">
+            <div class="form-group">
+                <label>Подтвердите пароль</label>
+                <RadzenPassword @bind-Value=@newUser.Model.ConfirmPassword class="col-12" />
+                <ValidationMessage For="@(()=>newUser.Model.ConfirmPassword)"></ValidationMessage>
+            </div>
+        </div>
+    </div>
+    <div class="row position-absolute" style="bottom:1.25rem;right:1.25rem">
+        <div class="col-12">
+            <RadzenButton ButtonType="ButtonType.Submit" Text="Сохранять" Click="@newUser.Save" Style="width: 150px" />
+            <RadzenButton Click="@newUser.Close" ButtonStyle="ButtonStyle.Secondary" Text="Закрывать" Style="width: 150px" />
+        </div>
+    </div>
+    <ObjectGraphDataAnnotationsValidator />
+</EditForm>
+
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        newUser.StateHasChanged = () => { StateHasChanged(); };
+
+        await newUser.OnInitializedAsync(string.Empty);
+    }
+    
+}

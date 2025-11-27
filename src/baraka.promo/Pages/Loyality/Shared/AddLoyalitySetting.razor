@@ -1,0 +1,492 @@
+﻿@page "/add_loyality_setting/{LoyalityTypeParam}"
+@page "/edit_loyality_setting/{LoyalityTypeParam}/{IdParam:int}"
+@page "/edit_loyality_setting/{LoyalityTypeParam}/{IdParam:int}/{CardTypeParam}"
+@using baraka.promo.Models.Enums
+@using baraka.promo.Models.LoyaltyApiModels.LoyalityTypeModels
+@using baraka.promo.Services.Loyality
+@using baraka.promo.Utils
+@using Newtonsoft.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using baraka.promo.Data.Loyalty
+@inherits BaseRazorComponent
+@inject LoyalitySettingService loyalitySettingService
+@inject IWebHostEnvironment webHostEnvironment
+@inject ILogger<AddLoyalitySetting> logger
+@inject NavigationManager navigationManager
+
+<div style="padding: 20px;">
+    <RadzenCard>
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+            <h3>@(IsUpdate ? "Редактировать настройки" : "Добавить настройки") - @LoyalityTypeParam</h3>
+            <RadzenButton Icon="arrow_back"
+                          Text="Назад"
+                          Click="@GoBack"
+                          ButtonStyle="ButtonStyle.Light" />
+        </div>
+
+        <RadzenStack Gap="20px">
+            @if (CurrentLoyalityType == LoyalityTypeKey.CASHBACK)
+            {
+                <div style="display:flex; gap:20px;">
+                    <div style="flex:1;">
+                        <label><b>Тип карты *</b></label>
+                        <RadzenDropDown @bind-Value="cashbackModel.CardType"
+                                        Data="@cardTypeOptions"
+                                        Style="width:100%;"
+                                        Disabled="@actionLoading"
+                                        TextProperty="Text"
+                                        ValueProperty="Value"
+                                        Placeholder="Выберите тип карты" />
+                    </div>
+
+                    <div style="flex:1;">
+                        <label><b>Процент кэшбэка (%) *</b></label>
+                        <RadzenNumeric @bind-Value="cashbackModel.Value"
+                                       Min="0" Max="100"
+                                       Style="width:100%;"
+                                       Disabled="actionLoading"
+                                       Placeholder="Введите процент" />
+                    </div>
+                </div>
+
+
+                <RadzenText TagName="TagName.H3" TextStyle="TextStyle.H6" Style="margin-top:10px;">
+                    Оферта
+                </RadzenText>
+
+                <div style="display:flex; gap:20px;">
+
+                    <div style="flex:1;">
+                        <label><b>Оферта (UZ)</b></label>
+                        <RadzenTextArea @bind-Value="cashbackModel.Oferta.OfertaUz"
+                                        Rows="3"
+                                        Style="width:100%;"
+                                        Disabled="actionLoading" />
+                    </div>
+
+                    <div style="flex:1;">
+                        <label><b>Оферта (RU)</b></label>
+                        <RadzenTextArea @bind-Value="cashbackModel.Oferta.OfertaRu"
+                                        Rows="3"
+                                        Style="width:100%;"
+                                        Disabled="actionLoading" />
+                    </div>
+
+                    <div style="flex:1;">
+                        <label><b>Оферта (EN)</b></label>
+                        <RadzenTextArea @bind-Value="cashbackModel.Oferta.OfertaEn"
+                                        Rows="3"
+                                        Style="width:100%;"
+                                        Disabled="actionLoading" />
+                    </div>
+
+                </div>
+
+
+                <RadzenText TagName="TagName.H3" TextStyle="TextStyle.H6" Style="margin-top:10px;">
+                    Картинки
+                </RadzenText>
+
+                <div style="display:flex; gap:20px; flex-wrap:wrap;">
+                    <div style="flex:1; min-width:300px;">
+                        <label><b>Темная тема</b></label>
+                        <div class="input-group" style="margin-top:5px;">
+                            <input class="form-control" readonly
+                                   value="@blackImageName"
+                                   placeholder="Файл не выбран" />
+                            <label class="btn btn-primary mb-0">
+                                Выбрать
+                                <InputFile OnChange="@((e) => OnInputFileChange(e, "black"))"
+                                           accept="image/*"
+                                           style="display:none;"
+                                           disabled="@actionLoading" />
+                            </label>
+                        </div>
+                        @if (!string.IsNullOrEmpty(cashbackModel.ImgUrlBlack))
+                        {
+                            <div style="margin-top:10px;">
+                                <RadzenImage Path="@GetImagePath(cashbackModel.ImgUrlBlack)"
+                                             Style="width:100%; max-width:400px; height:200px; object-fit:cover; border-radius:10px;" />
+                                <RadzenButton Icon="delete"
+                                              ButtonStyle="ButtonStyle.Danger"
+                                              Size="ButtonSize.Small"
+                                              Style="margin-top:10px;"
+                                              Click="@(() => RemoveImage("black"))"
+                                              Text="Удалить" />
+                            </div>
+                        }
+                    </div>
+
+                    <div style="flex:1; min-width:300px;">
+                        <label><b>Светлая тема</b></label>
+                        <div class="input-group" style="margin-top:5px;">
+                            <input class="form-control" readonly
+                                   value="@lightImageName"
+                                   placeholder="Файл не выбран" />
+                            <label class="btn btn-primary mb-0">
+                                Выбрать
+                                <InputFile OnChange="@((e) => OnInputFileChange(e, "light"))"
+                                           accept="image/*"
+                                           style="display:none;"
+                                           disabled="@actionLoading" />
+                            </label>
+                        </div>
+                        @if (!string.IsNullOrEmpty(cashbackModel.ImgUrlLight))
+                        {
+                            <div style="margin-top:10px;">
+                                <RadzenImage Path="@GetImagePath(cashbackModel.ImgUrlLight)"
+                                             Style="width:100%; max-width:400px; height:200px; object-fit:cover; border-radius:10px;" />
+                                <RadzenButton Icon="delete"
+                                              ButtonStyle="ButtonStyle.Danger"
+                                              Size="ButtonSize.Small"
+                                              Style="margin-top:10px;"
+                                              Click="@(() => RemoveImage("light"))"
+                                              Text="Удалить" />
+                            </div>
+                        }
+                    </div>
+                </div>
+            }
+            else
+            {
+                <div>
+                    <label><b>Значение (JSON)</b></label>
+                    <RadzenTextArea @bind-Value="genericValueInfo"
+                                    Rows="10"
+                                    Style="width:100%;"
+                                    Disabled="actionLoading"
+                                    Placeholder="JSON формат данных" />
+                </div>
+
+                <div>
+                    <label><b>Активный</b></label>
+                    <RadzenCheckBox @bind-Value="isActive" />
+                </div>
+            }
+
+            <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:30px; padding-top:20px; border-top:1px solid #ddd;">
+                <RadzenButton Text="Отмена"
+                              Icon="cancel"
+                              ButtonStyle="ButtonStyle.Light"
+                              Click="@GoBack"
+                              Disabled="actionLoading" />
+                <RadzenButton Text="Сохранить"
+                              Icon="save"
+                              ButtonStyle="ButtonStyle.Success"
+                              Click="@SaveSettings"
+                              Disabled="@(actionLoading || !IsValid())" />
+            </div>
+        </RadzenStack>
+    </RadzenCard>
+</div>
+
+@code {
+    [Parameter] public string? LoyalityTypeParam { get; set; }
+    [Parameter] public int IdParam { get; set; }
+    [Parameter] public string? CardTypeParam { get; set; }
+
+    CashbackModel cashbackModel = new() { Oferta = new LanguageInfo() };
+    List<CashbackModel> allCashbacks = new();
+    List<CardTypeOption> cardTypeOptions = new();
+
+    string blackImageName = "";
+    string lightImageName = "";
+    string genericValueInfo = "";
+    bool isActive = true;
+
+    LoyalityTypeKey CurrentLoyalityType => Enum.TryParse<LoyalityTypeKey>(LoyalityTypeParam, out var result) ? result : LoyalityTypeKey.CASHBACK;
+    bool IsUpdate => IdParam > 0;
+    CardType? OriginalCardType = null;
+
+    public class CardTypeOption
+    {
+        public CardType Value { get; set; }
+        public string Text { get; set; } = "";
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        cardTypeOptions = Enum.GetValues<CardType>()
+            .Select(ct => new CardTypeOption
+            {
+                Value = ct,
+                Text = EnumHelper<CardType>.EnumToString(ct)
+            })
+            .ToList();
+
+        if (IsUpdate)
+        {
+            await LoadExistingData();
+        }
+        else
+        {
+            cashbackModel = new CashbackModel
+            {
+                CardType = CardType.Common,
+                Value = 0,
+                Oferta = new LanguageInfo()
+            };
+        }
+    }
+
+    async Task LoadExistingData()
+    {
+        try
+        {
+            var setting = await loyalitySettingService.GetById(IdParam);
+            if (setting == null) return;
+
+            isActive = setting.IsActive;
+
+            if (CurrentLoyalityType == LoyalityTypeKey.CASHBACK && !string.IsNullOrEmpty(setting.ValueInfo))
+            {
+                allCashbacks = JsonConvert.DeserializeObject<List<CashbackModel>>(setting.ValueInfo) ?? new();
+
+                if (!string.IsNullOrEmpty(CardTypeParam) && Enum.TryParse<CardType>(CardTypeParam, out var cardType))
+                {
+                    var existing = allCashbacks.FirstOrDefault(c => c.CardType == cardType);
+                    if (existing != null)
+                    {
+                        OriginalCardType = existing.CardType;
+                        cashbackModel = new CashbackModel
+                        {
+                            CardType = existing.CardType,
+                            Value = existing.Value,
+                            ImgUrlBlack = existing.ImgUrlBlack,
+                            ImgUrlLight = existing.ImgUrlLight,
+                            Oferta = new LanguageInfo
+                            {
+                                OfertaUz = existing.Oferta?.OfertaUz ?? "",
+                                OfertaRu = existing.Oferta?.OfertaRu ?? "",
+                                OfertaEn = existing.Oferta?.OfertaEn ?? ""
+                            }
+                        };
+                    }
+                }
+            }
+            else
+            {
+                genericValueInfo = setting.ValueInfo ?? "";
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorNotify(ex);
+        }
+    }
+
+    async Task OnInputFileChange(InputFileChangeEventArgs e, string theme)
+    {
+        try
+        {
+            var file = e.File;
+            if (file == null) return;
+
+            if (file.Size > 5 * 1024 * 1024)
+            {
+                Notify("Размер файла не должен превышать 5 МБ");
+                return;
+            }
+
+            actionLoading = true;
+            StateHasChanged();
+
+            var extension = Path.GetExtension(file.Name);
+            var fileName = $"cashback_{cashbackModel.CardType}_{theme}_{Guid.NewGuid()}{extension}";
+            var uploadsFolder = Path.Combine(webHostEnvironment.WebRootPath, "uploads", "cashback");
+
+            if (!Directory.Exists(uploadsFolder))
+                Directory.CreateDirectory(uploadsFolder);
+
+            var filePath = Path.Combine(uploadsFolder, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.OpenReadStream(maxAllowedSize: 5 * 1024 * 1024).CopyToAsync(stream);
+            }
+
+            var relativePath = $"uploads/cashback/{fileName}";
+
+            if (theme == "black")
+            {
+                if (!string.IsNullOrEmpty(cashbackModel.ImgUrlBlack))
+                    DeleteFileFromServer(cashbackModel.ImgUrlBlack);
+                cashbackModel.ImgUrlBlack = relativePath;
+                blackImageName = file.Name;
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(cashbackModel.ImgUrlLight))
+                    DeleteFileFromServer(cashbackModel.ImgUrlLight);
+                cashbackModel.ImgUrlLight = relativePath;
+                lightImageName = file.Name;
+            }
+
+            Notify("Файл загружен");
+        }
+        catch (Exception ex)
+        {
+            ErrorNotify(ex);
+        }
+        finally
+        {
+            actionLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    void RemoveImage(string theme)
+    {
+        if (theme == "black")
+        {
+            if (!string.IsNullOrEmpty(cashbackModel.ImgUrlBlack))
+            {
+                DeleteFileFromServer(cashbackModel.ImgUrlBlack);
+                cashbackModel.ImgUrlBlack = null;
+                blackImageName = "";
+            }
+        }
+        else
+        {
+            if (!string.IsNullOrEmpty(cashbackModel.ImgUrlLight))
+            {
+                DeleteFileFromServer(cashbackModel.ImgUrlLight);
+                cashbackModel.ImgUrlLight = null;
+                lightImageName = "";
+            }
+        }
+        StateHasChanged();
+    }
+
+    void DeleteFileFromServer(string filePath)
+    {
+        try
+        {
+            var fullPath = Path.Combine(webHostEnvironment.WebRootPath, filePath.TrimStart('/'));
+            if (File.Exists(fullPath))
+                File.Delete(fullPath);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "Error deleting file: {FilePath}", filePath);
+        }
+    }
+
+    string GetImagePath(string? imgUrl)
+    {
+        if (string.IsNullOrEmpty(imgUrl)) return "";
+        if (imgUrl.StartsWith("http")) return imgUrl;
+        return $"/{imgUrl.TrimStart('/')}";
+    }
+
+    bool IsValid()
+    {
+        if (CurrentLoyalityType == LoyalityTypeKey.CASHBACK)
+        {
+            return cashbackModel.Value >= 0 && cashbackModel.Value <= 100;
+        }
+        return true;
+    }
+
+    async Task SaveSettings()
+    {
+        try
+        {
+            actionLoading = true;
+
+            if (CurrentLoyalityType == LoyalityTypeKey.CASHBACK)
+            {
+                await SaveCashbackSettings();
+            }
+            else
+            {
+                await SaveGenericSettings();
+            }
+
+            Notify(IsUpdate ? "Настройки обновлены" : "Настройки добавлены");
+            GoBack();
+        }
+        catch (Exception ex)
+        {
+            ErrorNotify(ex);
+        }
+        finally
+        {
+            actionLoading = false;
+        }
+    }
+
+    async Task SaveCashbackSettings()
+    {
+        if (IsUpdate && IdParam > 0)
+        {
+            var setting = await loyalitySettingService.GetById(IdParam);
+            if (setting != null && !string.IsNullOrEmpty(setting.ValueInfo))
+            {
+                allCashbacks = JsonConvert.DeserializeObject<List<CashbackModel>>(setting.ValueInfo) ?? new();
+            }
+
+            if (OriginalCardType.HasValue && OriginalCardType.Value != cashbackModel.CardType)
+            {
+                var oldItem = allCashbacks.FirstOrDefault(c => c.CardType == OriginalCardType.Value);
+                if (oldItem != null)
+                {
+                    allCashbacks.Remove(oldItem);
+                }
+            }
+
+            var existingIndex = allCashbacks.FindIndex(c => c.CardType == (OriginalCardType ?? cashbackModel.CardType));
+            if (existingIndex >= 0)
+            {
+                allCashbacks[existingIndex] = cashbackModel;
+            }
+            else
+            {
+                allCashbacks.Add(cashbackModel);
+            }
+
+            var json = JsonConvert.SerializeObject(allCashbacks);
+            await loyalitySettingService.UpdateValueInfo(IdParam, json);
+        }
+        else
+        {
+            var existingSetting = await loyalitySettingService.GetFirstByType(CurrentLoyalityType);
+
+            if (existingSetting != null)
+            {
+                allCashbacks = !string.IsNullOrEmpty(existingSetting.ValueInfo)
+                    ? JsonConvert.DeserializeObject<List<CashbackModel>>(existingSetting.ValueInfo) ?? new()
+                    : new();
+
+                allCashbacks.Add(cashbackModel);
+
+                var json = JsonConvert.SerializeObject(allCashbacks);
+                await loyalitySettingService.UpdateValueInfo(existingSetting.Id, json);
+            }
+            else
+            {
+                allCashbacks = new List<CashbackModel> { cashbackModel };
+                var json = JsonConvert.SerializeObject(allCashbacks);
+                await loyalitySettingService.Create(CurrentLoyalityType, json, isActive);
+            }
+        }
+    }
+
+    async Task SaveGenericSettings()
+    {
+        if (IsUpdate && IdParam > 0)
+        {
+            await loyalitySettingService.UpdateValueInfo(IdParam, genericValueInfo);
+            await loyalitySettingService.SetActive(IdParam, isActive);
+        }
+        else
+        {
+            await loyalitySettingService.Create(CurrentLoyalityType, genericValueInfo, isActive);
+        }
+    }
+
+    void GoBack()
+    {
+        navigationManager.NavigateTo("/loyality_settings");
+    }
+}

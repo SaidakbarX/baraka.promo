@@ -1,0 +1,40 @@
+﻿@typeparam TItem
+
+@inject DialogService dialogService
+
+<RadzenStack Gap="1rem" Orientation="Orientation.Vertical" JustifyContent="JustifyContent.SpaceBetween" Style="height: 100%;">
+    <RadzenStack>
+        <RadzenFormField Text="Название" Style="display: flex; width: 100%;">
+            <RadzenTextBox @bind-Value="@Integration.Name" />
+        </RadzenFormField>
+        <RadzenFormField Text="API-ключ" Style="display: flex; width: 100%;">
+            <RadzenTextBox @bind-Value="@Integration.SecretKey" />
+        </RadzenFormField>
+    </RadzenStack>
+    <RadzenStack Orientation="Orientation.Horizontal" JustifyContent="JustifyContent.End" Gap="0.5rem">
+        <RadzenButton ButtonType="ButtonType.Submit" Text="Сохранить" Click="()=>Close(Integration)" Style="width: 150px" />
+        <RadzenButton Click="@((args) => dialogService.Close(true))" Variant="Variant.Flat" Text="Отмена" Style="width: 120px" />
+    </RadzenStack>
+</RadzenStack>
+
+@code {
+
+    [Parameter] 
+    public int Id { get; set; }
+
+    [Parameter]
+    public EventCallback<TItem> OnConfirm { get; set; }
+
+    [Parameter]
+    public Integration Integration { get; set; }
+
+    async void Close(dynamic result)
+    {
+        dialogService.OnClose -= Close;
+
+        if (result != null)
+        {
+            await OnConfirm.InvokeAsync(result);
+        }
+    }
+}

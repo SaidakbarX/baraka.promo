@@ -1,0 +1,451 @@
+﻿@page "/addsegment"
+@page "/addsegment/{Id}"
+
+@using System.Transactions;
+@using Newtonsoft.Json;
+@using baraka.promo.Models.PromoModels;
+@using baraka.promo.Models.Segment;
+@using baraka.promo.Pages.Promos;
+@using System
+
+@inject DeliveryDbContext _dbDelivery
+@inject ApplicationDbContext _dbApp
+@inject NotificationService NotificationService
+@inject NavigationManager NavigationManager
+@inject DialogService dialogService
+@inject ILogger<AddSegment> _logger
+
+
+<div style="display:flex; flex-direction:row; width:100%; gap:10px; justify-content: space-between; padding:20px">
+    <RadzenCard Style="width: 50%; height:fit-content;">
+        <RadzenRow Style="flex:1; width:100%;" Gap="1rem">
+            <RadzenColumn Style="width:100%;">
+                <RadzenStack>
+                    <RadzenFormField Text="Название" Variant="@variant" Style="display: flex; width: 100%;">
+                        <RadzenTextBox @bind-Value="@segment.Name" />
+                    </RadzenFormField>
+                    <div>
+                        <RadzenLabel Text="Новый клиентᅠᅠ" />
+                        <RadzenSwitch Disabled="@disableClient" @bind-Value="@segment.IsNewClient" Change=@(args => OnChange(args)) />
+                    </div>
+                    <RadzenFormField Text="Количество заказов новых клиентов" Variant="@variant" AllowFloatingLabel="false">
+                        <RadzenNumeric Disabled="@(!disabledField)" @bind-Value="@segment.NewClientOrdersCount" />
+                    </RadzenFormField>
+                    <RadzenFormField Text=" Период действия сегмента" Variant="@variant">
+                        <RadzenDatePicker @bind-Value="@segment.DateFrom" DateFormat="dd.MM.yyyy" Placeholder="с" />
+                        <RadzenDatePicker @bind-Value="@segment.DateTo" DateFormat="dd.MM.yyyy" Placeholder="по" />
+                    </RadzenFormField>
+                    <RadzenFormField Text=" Период заказа" Variant="@variant">
+                        <RadzenDatePicker Disabled="disabledField" @bind-Value="@segment.OrderTimeFrom" DateFormat="dd.MM.yyyy" Placeholder="с" />
+                        <RadzenDatePicker Disabled="disabledField" @bind-Value="@segment.OrderTimeTo" DateFormat="dd.MM.yyyy" Placeholder="по" />
+                    </RadzenFormField>
+                    <RadzenFormField Text=" Дни с последнего заказа" Variant="@variant" AllowFloatingLabel="false">
+                        <RadzenNumeric Disabled="disabledField" @bind-Value="@segment.OrderPeriodFrom" Placeholder="с" />
+                        <RadzenNumeric Disabled="disabledField" @bind-Value="@segment.OrderPeriodTo" Placeholder="по" />
+                    </RadzenFormField>
+                    <RadzenFormField Text=" Количество заказа" Variant="@variant" AllowFloatingLabel="false">
+                        <RadzenNumeric Disabled="disabledField" @bind-Value="@segment.QuantityMin" Placeholder="с" />
+                        <RadzenNumeric Disabled="disabledField" @bind-Value="@segment.QuantityMax" Placeholder="по" />
+                    </RadzenFormField>
+                    <div>
+                        <RadzenLabel Text="Для фильтрации категории и товаров" />
+                        <div>
+                            <RadzenLabel Text="Или" />
+                            <RadzenSwitch Disabled="disabledField" @bind-Value="@segment.LogicalOperator" />
+                            <RadzenLabel Text="И" />
+                        </div>
+                    </div>
+                    <RadzenFormField Text=" Сумма заказа" Variant="@variant" AllowFloatingLabel="false">
+                        <RadzenNumeric Disabled="disabledField" @bind-Value="@segment.AmountMin" Placeholder="с" />
+                        <RadzenNumeric Disabled="disabledField" @bind-Value="@segment.AmountMax" Placeholder="по" />
+                    </RadzenFormField>
+                    <RadzenFormField Text=" Общая сумма заказов" Variant="@variant" AllowFloatingLabel="false">
+                        <RadzenNumeric Disabled="disabledField" @bind-Value="@segment.TotalAmountMin" Placeholder="с" />
+                        <RadzenNumeric Disabled="disabledField" @bind-Value="@segment.TotalAmountMax" Placeholder="по" />
+                    </RadzenFormField>
+                    <RadzenFormField Text=" Тип заказа" Variant="@variant" AllowFloatingLabel="false">
+                        <RadzenDropDown Disabled="disabledField" @bind-Value="@orderTypeIds" Data="@orderTypes" TextProperty="Name_Ru" ValueProperty="Id"
+                                        Multiple="true" AllowClear=true Chips=true />
+                    </RadzenFormField>
+                    <RadzenButton style="width: 160px" Icon="save" BusyText="Сохранять ..." IsBusy=@busy Click=@OnSaveClick Text="Сохранять" />
+                </RadzenStack>
+            </RadzenColumn>
+        </RadzenRow>
+    </RadzenCard>
+    <div style="display: flex;row-gap: 25px;flex-direction: column;align-items: stretch; width: 50%;">
+        <div>
+            <RadzenCard Style="display: flex;flex-direction: column;">
+                <RadzenLabel Text="Выберите рестораны" Component="DropDownMultipleChips" Style="margin-right: 8px; vertical-align: middle;" />
+                <RadzenDropDownDataGrid @ref="grid" Chips="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" AllowClear="true" @bind-Value=@BranchId
+                                        Multiple="true" Placeholder="Выберите рестораны" Data=@Branchs TextProperty="Name" ValueProperty="Id" Name="DropDownDataGridMultiple">
+                    <Columns>
+                        <RadzenDropDownDataGridColumn Width="60px" Sortable="false">
+                            <HeaderTemplate>
+                                <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select all" }})" Disabled="@(!grid.AllowSelectAll)" TriState="false" TValue="bool" Value="@(Branchs.Any(c => BranchId != null && BranchId.Contains(c.Id)))"
+                                                Change="@(args => BranchId = args ? grid.View.Cast<RestaurantModel>().Select(c => c.Id).ToList() : BranchId = new List<Guid>())" />
+                            </HeaderTemplate>
+                            <Template Context="data">
+                                <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select item" }})" TriState="false" Value="@(BranchId != null && BranchId.Contains(((RestaurantModel) data).Id))"
+                                                TValue="bool" Change=@(args => grid.SelectItem(data)) @onclick:stopPropagation />
+                            </Template>
+                        </RadzenDropDownDataGridColumn>
+                        <RadzenDropDownDataGridColumn Property="Region.Name_Ru" Title="Название региона" Width="100px" />
+                        <RadzenDropDownDataGridColumn Property="Name" Title="Название ресторана" Width="200px" />
+                    </Columns>
+                </RadzenDropDownDataGrid>
+            </RadzenCard>
+        </div>
+        @if(!disabledField)
+        {
+            <div>
+                <RadzenCard Style="display: flex;flex-direction: column; row-gap: 10px;">
+
+                    <div class="row">
+                        <div class="col">
+                            <h3>Категория</h3>
+                        </div>
+                        <div class="col">
+                            <RadzenButton Click=@(args => AddCategory()) Text="Добавить" Icon="add_circle_outline"
+                                          class="float-end" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Medium" />
+                        </div>
+                    </div>
+
+                    <RadzenDataGrid @ref="categoryGrid" TItem="NewProduct" Data="@categories" GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Name" Title="Наименование товара" />
+                            <RadzenDataGridColumn Context="pro" TItem="NewProduct" TextAlign="TextAlign.Right">
+                                <Template Context="pro">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Size="ButtonSize.Medium"
+                                                  Click="@(args => DeleteCategory(pro))">
+                                    </RadzenButton>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+
+                </RadzenCard>
+            </div>
+            <div>
+                <RadzenCard Style="display: flex;flex-direction: column; row-gap: 10px;">
+
+                    <div class="row">
+                        <div class="col">
+                            <h3>Блюда</h3>
+                        </div>
+                        <div class="col">
+                            <RadzenButton Click=@(args => AddProduct()) Text="Добавить" Icon="add_circle_outline"
+                                          class="float-end" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Medium" />
+                        </div>
+                    </div>
+
+                    <RadzenDataGrid @ref="productGrid" TItem="NewProduct" Data="@products" GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Name" Title="Наименование товара" />
+                            <RadzenDataGridColumn Context="pro" TItem="NewProduct" TextAlign="TextAlign.Right">
+                                <Template Context="pro">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Size="ButtonSize.Medium"
+                                                  Click="@(args => DeleteProduct(pro))">
+                                    </RadzenButton>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+
+                </RadzenCard>
+            </div>
+        }
+    </div>
+</div>
+
+
+@code {
+    [Parameter]
+    public string? Id { get; set; }
+
+    Variant variant = Variant.Outlined;
+    RadzenDropDownDataGrid<List<Guid>> grid;
+    bool busy;
+    RadzenDataGrid<NewProduct> productGrid, categoryGrid;
+    AddSegmentModel segment = new();
+    List<NewProduct> products = new List<NewProduct>();
+    List<NewProduct> categories = new List<NewProduct>();
+    List<OrderTypes> orderTypes = new List<OrderTypes>();
+    Guid productId, categoryId;
+    List<int> orderTypeIds = new List<int>();
+    List<RestaurantModel> Branchs = new List<RestaurantModel>();
+    List<Guid> BranchId = new List<Guid>();
+
+    bool disabledField;
+    bool disableClient;
+
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if(firstRender)
+        {
+            var types = _dbDelivery.OrderTypes.ToList();
+            foreach (var item in types)
+                orderTypes.Add(new OrderTypes { Id = item.Id, Name_Ru = item.Name_Ru });
+
+            await LoadBranchs();
+
+            if (!string.IsNullOrEmpty(Id))
+            {
+                var seg = _dbApp.Segments.Where(a => a.Id == int.Parse(Id)).FirstOrDefault();
+                if (seg != null)
+                {
+                    segment = new AddSegmentModel
+                    {
+                        Name = seg.Name,
+                        AmountMin = seg.AmountMin,
+                        AmountMax = seg.AmountMax,
+                        QuantityMin = seg.QuantityMin,
+                        QuantityMax = seg.QuantityMax,
+                        OrderTimeFrom = seg.OrderTimeFrom,
+                        OrderTimeTo = seg.OrderTimeTo,
+                        DateFrom = seg.DateFrom,
+                        DateTo = seg.DateTo,
+                        OrderPeriodFrom = seg.OrderPeriodFrom,
+                        OrderPeriodTo = seg.OrderPeriodTo,
+                        TotalAmountMin = seg.TotalAmountMin,
+                        TotalAmountMax = seg.TotalAmountMax,
+                        OrderTypeId = seg.OrderTypeIds,
+                        RestaurantIds = seg.RestaurantIds,
+                        IsNewClient = seg.IsNewClient,
+                        LogicalOperator = seg.LogicalOperator,
+                        NewClientOrdersCount = seg.NewClientOrdersCount
+                    };
+
+                    orderTypeIds = JsonConvert.DeserializeObject<List<int>>(segment.OrderTypeId ?? "[]");
+                    BranchId = JsonConvert.DeserializeObject<List<Guid>>(segment.RestaurantIds ?? "[]");
+                    if (!string.IsNullOrEmpty(seg.CategoryIds) || !string.IsNullOrEmpty(seg.ProductIds))
+                    {
+                        disableClient = true;
+                    }
+
+                    if (!string.IsNullOrEmpty(seg.CategoryIds))
+                    {
+                        var categoryIds = JsonConvert.DeserializeObject<List<string>>(seg.CategoryIds);
+                        foreach (var item in categoryIds)
+                        {
+                            var catg = _dbDelivery.ProductCategories.Where(a => a.Id == Guid.Parse(item)).FirstOrDefault();
+                            categories.Add(new NewProduct { Id = catg.Id.ToString(), Name = catg.Name_Ru });
+                        }
+                    }
+
+                    if (!string.IsNullOrEmpty(seg.ProductIds))
+                    {
+                        var productIds = JsonConvert.DeserializeObject<List<string>>(seg.ProductIds);
+                        foreach (var item in productIds)
+                        {
+                            var pro = _dbDelivery.Products.Where(a => a.Id == Guid.Parse(item)).FirstOrDefault();
+                            products.Add(new NewProduct { Id = pro.Id.ToString(), Name = pro.Name_Ru });
+                        }
+                    }
+                }
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    void OnChange(bool value)
+    {
+        disabledField = value;
+    }
+
+    public async Task LoadBranchs()
+    {
+        var branchs = _dbDelivery.Restaurants.Select(a => new RestaurantModel
+            {
+                Id = a.Id,
+                Name = a.Name,
+                RegionId = a.RegionId,
+                Region = new RegionModel
+                {
+                    Id = a.Region.Id,
+                    Name_En = a.Region.Name_En,
+                    Name_Ru = a.Region.Name_Ru,
+                    Name_Uz = a.Region.Name_Uz
+                }
+            }).ToList();
+        Branchs = branchs;
+    }
+
+    public async void OnSaveClick()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(Id))
+            {
+                var seg = _dbApp.Segments.Where(a => a.Id == int.Parse(Id)).FirstOrDefault();
+                if (seg != null)
+                {
+                    var jsonCategory = JsonConvert.SerializeObject(categories.Select(a => a.Id).ToList());
+                    var jsonProduct = JsonConvert.SerializeObject(products.Select(a => a.Id).ToList());
+                    var jsonOrderType = JsonConvert.SerializeObject(orderTypeIds);
+                    var jsonRestaurant = JsonConvert.SerializeObject(BranchId);
+                    seg.Name = segment.Name;
+                    seg.AmountMin = segment.AmountMin;
+                    seg.AmountMax = segment.AmountMax;
+                    seg.QuantityMin = segment.QuantityMin;
+                    seg.QuantityMax = segment.QuantityMax;
+                    seg.OrderTimeFrom = segment.OrderTimeFrom;
+                    seg.OrderTimeTo = segment.OrderTimeTo;
+                    seg.DateFrom = segment.DateFrom;
+                    seg.DateTo = segment.DateTo;
+                    seg.OrderPeriodFrom = segment.OrderPeriodFrom;
+                    seg.OrderPeriodTo = segment.OrderPeriodTo;
+                    seg.TotalAmountMin = segment.TotalAmountMin;
+                    seg.TotalAmountMax = segment.TotalAmountMax;
+                    seg.OrderTypeIds = jsonOrderType;
+                    seg.CategoryIds = jsonCategory;
+                    seg.ProductIds = jsonProduct;
+                    seg.RestaurantIds = jsonRestaurant;
+                    seg.IsNewClient = segment.IsNewClient;
+                    seg.NewClientOrdersCount = segment.NewClientOrdersCount;
+                    seg.LogicalOperator = segment.LogicalOperator;
+
+                    _dbApp.SaveChanges();
+
+                }
+            }
+            else
+            {
+                using (var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+                {
+                    var jsonCategory = JsonConvert.SerializeObject(categories.Select(a => a.Id).ToList());
+                    var jsonProduct = JsonConvert.SerializeObject(products.Select(a => a.Id).ToList());
+                    var jsonOrderType = JsonConvert.SerializeObject(orderTypeIds);
+                    var jsonRestaurant = JsonConvert.SerializeObject(BranchId);
+                    _dbApp.Segments.Add(new Data.Segment
+                        {
+                            Name = segment.Name,
+                            AmountMin = segment.AmountMin,
+                            AmountMax = segment.AmountMax,
+                            QuantityMin = segment.QuantityMin,
+                            QuantityMax = segment.QuantityMax,
+                            OrderTimeFrom = segment.OrderTimeFrom,
+                            OrderTimeTo = segment.OrderTimeTo,
+                            DateFrom = segment.DateFrom,
+                            DateTo = segment.DateTo,
+                            OrderPeriodFrom = segment.OrderPeriodFrom,
+                            OrderPeriodTo = segment.OrderPeriodTo,
+                            TotalAmountMin = segment.TotalAmountMin,
+                            TotalAmountMax = segment.TotalAmountMax,
+                            OrderTypeIds = jsonOrderType,
+                            CategoryIds = jsonCategory,
+                            ProductIds = jsonProduct,
+                            RestaurantIds = jsonRestaurant,
+                            IsNewClient = segment.IsNewClient,
+                            NewClientOrdersCount = segment.NewClientOrdersCount,
+                            LogicalOperator = segment.LogicalOperator
+                        });
+                    await _dbApp.SaveChangesAsync();
+
+                    scope.Complete();
+
+                }
+            }
+            ReturnSegment();
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, e.Message);
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{e.Message}", Duration = 4000 });
+        }
+    }
+
+    void AddProductDialogClose(dynamic result)
+    {
+        dialogService.OnClose -= AddProductDialogClose;
+
+        if (result != null)
+        {
+            var productId = result.productId as Guid?;
+            if (productId.HasValue && productId != Guid.Empty)
+            {
+                var prod = _dbDelivery.Products.FirstOrDefault(a => a.Id == productId);
+                if (prod != null)
+                    products.Add(new NewProduct
+                        {
+                            Id = prod.Id.ToString(),
+                            Name = prod.Name_Ru
+                        });
+            }
+            productGrid.Reload();
+            StateHasChanged();
+        }
+    }
+
+    void AddCategoryDialogClose(dynamic result)
+    {
+        dialogService.OnClose -= AddCategoryDialogClose;
+
+        if (result != null)
+        {
+            var categoryId = result.categoryId as Guid?;
+            if (categoryId.HasValue && categoryId != Guid.Empty)
+            {
+                var prod = _dbDelivery.ProductCategories.FirstOrDefault(a => a.Id == categoryId);
+                if (prod != null)
+                    categories.Add(new NewProduct
+                        {
+                            Id = prod.Id.ToString(),
+                            Name = prod.Name_Ru
+                        });
+            }
+            categoryGrid.Reload();
+            StateHasChanged();
+        }
+    }
+
+    public void AddProduct()
+    {
+        dialogService.OnClose += AddProductDialogClose;
+
+        dialogService.Open<AddSegmentProduct>("Добавить блюда",
+           options: new DialogOptions() { Width = "500px", Height = "330px" });
+    }
+
+    public void AddCategory()
+    {
+        dialogService.OnClose += AddCategoryDialogClose;
+
+        dialogService.Open<AddSegmentCategory>("Добавить категория",
+           options: new DialogOptions() { Width = "500px", Height = "330px" });
+    }
+
+    public void DeleteProduct(NewProduct pro)
+    {
+        products.Remove(pro);
+        productId = Guid.Empty;
+        productGrid.Reload();
+        StateHasChanged();
+    }
+
+    public void DeleteCategory(NewProduct pro)
+    {
+        categories.Remove(pro);
+        categoryId = Guid.Empty;
+        categoryGrid.Reload();
+        StateHasChanged();
+    }
+
+    public void ReturnSegment()
+    {
+        NavigationManager.NavigateTo("/segment");
+    }
+
+    public class NewProduct
+    {
+        public string Id { get; set; }
+        public string Name { get; set; }
+    }
+
+    public class OrderTypes
+    {
+        public int Id { get; set; }
+        public string Name_Ru { get; set; }
+    }
+}

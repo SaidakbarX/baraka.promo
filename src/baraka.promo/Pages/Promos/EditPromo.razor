@@ -1,0 +1,80 @@
+﻿@page "/editpromo"
+
+@using Newtonsoft.Json;
+@using System.ComponentModel.DataAnnotations;
+@using baraka.promo.Models;
+@using baraka.promo.Pages.Promos;
+
+@inject DialogService _dialogService
+@inject NotificationService _notificationService
+@inject ApplicationDbContext _dbApp
+
+<EditForm Model="editModel" OnValidSubmit="(e=>Save())">
+    <div class="row">
+        <div class="col-12">
+            <div class="form-group d-flex justify-content-center" style="display: flex; flex-direction: column; align-items: baseline; row-gap: 25px;">
+                <label class="font-weight-bold">Promo - @promoModel.Name</label>
+                <RadzenSwitch @bind-Value=@editModel.IsActive class="col-12" />
+                <ValidationMessage For="@(()=>editModel.IsActive)"></ValidationMessage>
+            </div>
+        </div>
+    </div>
+
+    <div class="row position-absolute" style="bottom:1.25rem;right:1.25rem">
+        <div class="col-12">
+            <RadzenButton ButtonType="ButtonType.Submit" Click="@Save" Text="Сохранять" Style="width: 150px" />
+            <RadzenButton Click="@Close" ButtonStyle="ButtonStyle.Secondary" Text="Закрывать" Style="width: 150px" />
+        </div>
+    </div>
+    <ObjectGraphDataAnnotationsValidator />
+</EditForm>
+
+@code {
+    [Parameter]
+    public string Model { get; set; }
+
+    PromoModel promoModel;
+    EditPromoModel editModel = new EditPromoModel();
+
+    protected override void OnInitialized()
+    {
+        promoModel = JsonConvert.DeserializeObject<PromoModel>(Model);
+        editModel.IsActive = promoModel.IsActive;
+        base.OnInitialized();
+    }
+
+    public async void Save()
+    {
+        if (promoModel != null)
+        {
+            var promo = _dbApp.Promos.FirstOrDefault(a => a.Name == promoModel.Name);
+
+            promo.StartTime = editModel.StartTime == DateTime.MinValue ? DateTime.Now : editModel.StartTime;
+            promo.IsActive = editModel.IsActive;
+            promo.TotalCount = editModel.TotalCount;
+            if (editModel.EndTime != DateTime.MinValue)
+            {
+                promo.EndTime = editModel.EndTime;
+            }
+
+            _dbApp.SaveChanges();
+            Close();
+        }
+    }
+
+    public void Close()
+    {
+        _dialogService.Close(null);
+    }
+
+    public class EditPromoModel
+    {   
+        [Required]
+        public DateTime StartTime { get; set; }
+
+        public DateTime EndTime { get; set; }
+
+        public int? TotalCount { get; set; }
+        public bool IsActive { get; set; }
+    }
+}

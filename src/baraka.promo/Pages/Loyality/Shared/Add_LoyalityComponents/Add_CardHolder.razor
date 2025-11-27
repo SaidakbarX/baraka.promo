@@ -1,0 +1,217 @@
+﻿@using System.Text.RegularExpressions
+@using System.ComponentModel
+@using baraka.promo.Models.Cards
+@using baraka.promo.Models.Enums
+@using baraka.promo.Models.LoyaltyApiModels.Cardholders
+@using baraka.promo.Services.Loyality
+@using baraka.promo.Utils
+
+@inherits BaseRazorComponent
+@inject LoyalityCardHolderService cardHolder
+
+<RadzenCard Variant="Variant.Filled">
+    @if (!readOnly)
+    {
+
+        <h4>Добавление нового постоянного клиента</h4>
+    }
+    else
+    {
+        <h4>Информация о клиенте</h4>
+    }
+
+    <EditForm EditContext="@editContext" Context="CardholderModel" OnValidSubmit="(e => AddUpdateCardHolder())">
+        <RadzenStack Gap="10px">
+            <div class="form-group flex-column d-flex">
+                <label>Имя пользователя</label>
+                <RadzenTextBox ReadOnly="readOnly" @bind-Value="Model.Name" />
+                <ValidationMessage For="@(()=>Model.Name)"></ValidationMessage>
+            </div>
+            <div class="form-group flex-column d-flex">
+                <label>Телефон</label>
+                <InputMask ReadOnly="readOnly" Mask="+998 (00) 000-00-00" @bind-Value="Model.Phone" Placeholder="+998 (__) ___-__-__"></InputMask>
+                <ValidationMessage For="@(()=>Model.Phone)"></ValidationMessage>
+            </div>
+            <div class="form-group flex-column d-flex">
+                <label>Дата рождения</label>
+                <RadzenDatePicker ReadOnly="readOnly" DateFormat="MM/dd/yyyy" @bind-Value="Model.DateOfBirth" />
+            </div>
+
+            <div class="form-group flex-column d-flex">
+                <label>Тип держателя карты</label>
+                <RadzenDropDown ReadOnly="readOnly" Disabled="readOnly" @bind-Value="HolderType" Data="CardHolderTypes" Name="DropDownBindValue" />
+                <div class="validation-message">@HolderTypeError</div>
+
+            </div>
+            <div class="form-field">
+                <label>Email:</label>
+                <RadzenTextBox @bind-Value="Model.Email"
+                               Name="Email"
+                               Placeholder="Введите email"
+                               Style="width: 100%;" />
+            </div>
+            <label>Пол:</label>
+            <RadzenDropDown Data="Enum.GetValues<CardholderSex>()"
+                            @bind-Value="Model.Sex"
+                            Style="width: 100%;">
+
+                <Template Context="item">
+                    @GetDescription((CardholderSex)item)
+                </Template>
+
+                <ValueTemplate Context="value">
+                    @GetDescription((CardholderSex)value)
+                </ValueTemplate>
+
+            </RadzenDropDown>
+            @if (UserId==Guid.Empty)
+            {
+                <div class="w-100 d-flex align-items-center justify-content-end pt-5" style="gap:10px;">
+                    <RadzenButton Disabled="actionLoading" ButtonType="ButtonType.Submit" Text="Сохранять" Style="width: 150px" />
+                    <RadzenButton Click="@(e=>GoLoyalityReload())" ButtonStyle="ButtonStyle.Secondary" Text="Отмена" Style="width: 150px" />
+                </div>
+            }
+            <ObjectGraphDataAnnotationsValidator />
+        </RadzenStack>
+    </EditForm>
+</RadzenCard>
+
+
+@code {
+    [Parameter]
+    public EventCallback<Guid> CardHolderId { get; set; }
+    [Parameter]
+    public bool Update { get; set; }
+
+    [Parameter]
+    public EventCallback ReloadData { get; set; }
+
+    [Parameter]
+    public Guid UserId { get; set; } = Guid.Empty;
+
+    [Parameter]
+    public CardholderModel Model { get; set; } = new();
+
+    private EditContext? editContext;
+    List<string> CardHolderTypes = new();
+    string HolderType = "";
+    string HolderTypeError = "";
+
+    bool readOnly => false;
+    string initPhoneNumber = "";
+    protected override async Task OnInitializedAsync()
+    {
+        editContext = new EditContext(Model);
+        CardHolderTypes = EnumHelper<CardholderType>.GetEnumDescriptions() ?? new();
+        if (CardHolderTypes.Count == 1)
+            HolderType = CardHolderTypes.FirstOrDefault() ?? "";
+        else
+            HolderType = CardHolderTypes.FirstOrDefault(f => f == EnumHelper<CardholderType>.EnumToString(Model.Type)) ?? CardHolderTypes.FirstOrDefault() ?? "";
+
+        initPhoneNumber = Model.Phone ?? "";
+    }
+
+    async Task<bool> AddUpdateCardHolder()
+    {
+        bool result = false;
+        try
+        {
+            if (string.IsNullOrEmpty(HolderType))
+            {
+                HolderTypeError = "Пожалуйста, выберите тип держателя карты";
+                return false;
+            }
+            var tempNumber = Regex.Replace(Model.Phone ?? "", @"[+()\s-]", "") ?? "";
+
+            if (tempNumber.Length!=12)
+            {
+                Notify("Номер телефона недействителен");
+                return false;
+            }
+            if (!await IsPhoneExsist(tempNumber))
+            {
+                return false;
+            }
+
+            HolderTypeError = "";
+            Model.Type = EnumHelper<CardholderType>.StringToEnum(HolderType);
+            actionLoading = true;
+            if (UserId == Guid.Empty && !Update)
+            {
+                var res = await cardHolder.Add(Model, successMessage: "Клиент успешно добавлен");
+                UserId = res.Id;
+                result = UserId!=Guid.Empty;
+                await CardHolderId.InvokeAsync(UserId);
+            }
+            else
+            {
+                var res = await cardHolder.Edit(UserId, Model, successMessage: "Клиент успешно обнавлён");
+                result = res;
+                StateHasChanged();
+                GoLoyalityReload();
+            }
+        }
+        catch (Exception e)
+        {
+            ErrorNotify(e);
+        }
+        finally
+        {
+            actionLoading = false;
+        }
+        return result;
+
+    }
+
+    async Task<bool> IsPhoneExsist(string phoneNumber)
+    {
+        try
+        {
+            if (UserId == Guid.Empty && !Update)
+                return await cardHolder.CheckPhoneNumber(phoneNumber);
+            else
+            {    
+                if (initPhoneNumber == phoneNumber)
+                    return true;
+                 else
+                    return await cardHolder.CheckPhoneNumber(phoneNumber);
+            }
+        }
+        catch (Exception e)
+        {
+            ErrorNotify(e);
+        }
+        return false;
+    }
+
+    public async Task Submit_AddCardHolder()
+    {
+        if (editContext!=null)
+        {
+            if (editContext.Validate() && editContext.IsModified())
+            {
+                bool res = await AddUpdateCardHolder();
+                if (res)
+                    editContext = new EditContext(Model);
+            }
+            else
+            {
+                string error = string.Join(", ", editContext.GetValidationMessages());
+                if (!string.IsNullOrEmpty(error))
+                    Notify(error);    
+            }
+        }
+    }
+    async void GoLoyalityReload()
+    {
+        await ReloadData.InvokeAsync();
+        GoTo("loyality");
+    }
+    string GetDescription(CardholderSex sex)
+    {
+        var field = sex.GetType().GetField(sex.ToString());
+        var attribute = (DescriptionAttribute)Attribute.GetCustomAttribute(field, typeof(DescriptionAttribute));
+        return attribute?.Description ?? sex.ToString();
+    }
+
+}

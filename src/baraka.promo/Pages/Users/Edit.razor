@@ -1,0 +1,40 @@
+﻿@page "/useredit"
+@using baraka.promo.Pages.Promos;
+@inject UserAddModel newUser
+@inject DialogService _dialogService
+@inject NotificationService _notificationService
+
+@if (newUser != null && newUser.Model != null)
+{
+    <EditForm Model="@newUser.Model" OnValidSubmit="(e=>newUser.Save())">
+        <div class="row">
+            <div class="col-12">
+                <div class="form-group d-flex justify-content-center" style="display: flex; flex-direction: column; align-items: baseline; row-gap: 25px;">
+                    <label class="font-weight-bold">Имя пользователя - @newUser.Model.UserName</label>
+                    <RadzenTextBox @bind-Value=@newUser.Model.UserName class="col-12" />
+                    <ValidationMessage For="@(()=>newUser.Model.UserName)"></ValidationMessage>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row position-absolute" style="bottom:1.25rem;right:1.25rem">
+            <div class="col-12">
+                <RadzenButton ButtonType="ButtonType.Submit" Click="@newUser.Save" Text="Сохранять" Style="width: 150px" />
+                <RadzenButton Click="@newUser.Close" ButtonStyle="ButtonStyle.Secondary" Text="Закрывать" Style="width: 150px" />
+            </div>
+        </div>
+        <ObjectGraphDataAnnotationsValidator />
+    </EditForm>
+}
+
+@code {
+    [Parameter]
+    public string Model { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        newUser.StateHasChanged = () => { StateHasChanged(); };
+
+        await newUser.OnInitializedAsync(Model);
+    }
+}

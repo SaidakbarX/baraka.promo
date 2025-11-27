@@ -1,0 +1,1698 @@
+﻿@page "/promo"
+@page "/promo/{Id}"
+@page "/promotion"
+@page "/promotion/{Id}"
+
+@attribute [Authorize]
+
+@using Delivery
+@using System.Transactions;
+@using DocumentFormat.OpenXml.Packaging
+@using DocumentFormat.OpenXml.Spreadsheet
+@using Microsoft.AspNetCore.Identity;
+@using Microsoft.EntityFrameworkCore;
+@using System.ComponentModel;
+@using baraka.promo;
+@using baraka.promo.Extensions
+@using baraka.promo.Models.PromoModels;
+@using baraka.promo.Models.PromoModels.NewPromoModels
+@using baraka.promo.Services.PromGroup
+
+@inject DeliveryDbContext _dbDelivery
+@inject IServiceProvider ServiceProvider
+@inject NotificationService NotificationService
+@inject NavigationManager NavigationManager
+@inject DialogService dialogService
+
+@inject PromoGroupService promoGroupService
+@inject ILogger<PromoPage> _logger
+
+
+<div style="display:flex; flex-direction:row; width:100%; gap:10px; justify-content: space-between; padding:20px">
+    <RadzenCard Style="width: 50%; height:fit-content;">
+        <RadzenRow Style="flex:1; width:100%;" Gap="1rem">
+            <RadzenColumn Style="width:100%;">
+                <RadzenStack>
+                    <div style="display: flex; justify-content: space-between; column-gap: 10px; align-items: flex-end;">
+                        <RadzenFormField Text="Название" Variant="@variant" Style="display: flex; width: 100%;">
+                            <RadzenTextBox @bind-Value="@promo.Name" />
+                        </RadzenFormField>
+                        @if (!is_promotion)
+                        {
+                            <RadzenButton Icon="autorenew" Style="display: flex; height: 38px;" ButtonStyle="ButtonStyle.Primary" Variant="Variant.Flat" Size="ButtonSize.Medium"
+                                          Click="@(args => GenerateRandomString())">
+                            </RadzenButton>
+                        }
+                    </div>
+                    @if (!is_promotion)
+                    {
+                        <RadzenFormField Text="Макс кол-во использование (для каждого клиента)" Variant="@variant">
+                            <RadzenNumeric @bind-Value="@promo.MaxCount" />
+                        </RadzenFormField>
+                    }
+                    <RadzenFormField Text=" Период действия" Variant="@variant">
+                        <RadzenDatePicker Disabled="@stratTime" @bind-Value="@promo.StartTime" ShowTime="true" ShowSeconds="true" DateFormat="dd.MM.yyyy HH:mm" Placeholder="с" />
+                        <RadzenDatePicker @bind-Value="@promo.EndTime" ShowTime="true" ShowSeconds="true" DateFormat="dd.MM.yyyy HH:mm" Placeholder="по" />
+                    </RadzenFormField>
+
+                    <RadzenFormField Text="Минимальная сумма заказа" Variant="@variant">
+                        <RadzenNumeric @bind-Value="@minOrderAmount" />
+                    </RadzenFormField>
+                    <RadzenFormField Text="Максимальная сумма заказа" Variant="@variant">
+                        <RadzenNumeric @bind-Value="@maxOrderAmount" />
+                    </RadzenFormField>
+                    <RadzenFormField Text="Аудитория" Variant="@variant">
+                        <RadzenDropDown Disabled="@type" Data="@Type" ValueProperty="Key" TextProperty="Value" @bind-Value="@promo.Type" />
+                    </RadzenFormField>
+                    <RadzenFormField Text="Механика" Variant="@variant">
+                        <RadzenDropDown Disabled="@view" Data=@View ValueProperty="Key" TextProperty="Value" @bind-Value="@promo.View" />
+                    </RadzenFormField>
+                    @if (promo.View == PromoView.OrderDiscount)
+                    {
+                        <RadzenFormField Text="Скидка на заказ (%)" Variant="@variant">
+                            <RadzenNumeric @bind-Value="@promo.OrderDiscount" Min="1" Max="100" />
+                        </RadzenFormField>
+                    }
+                    @if (promo.View == PromoView.OrderDiscountAmount)
+                    {
+                        <RadzenFormField Text="Скидка на заказ на сумму" Variant="@variant">
+                            <RadzenNumeric @bind-Value="@promo.OrderDiscount" Min="1000" Max="100000000" />
+                        </RadzenFormField>
+                    }
+                    @if (promo.Type == PromoType.Segment)
+                    {
+                        <RadzenFormField Text="Сегмент" Variant="@variant" AllowFloatingLabel="false">
+                            <RadzenDropDown Disabled="@segment" @bind-Value="@promo.SegmentId" Data="@Segments" TextProperty="Name" ValueProperty="Id" />
+                        </RadzenFormField>
+                    }
+                    @* <RadzenFormField Text="Общее количество" Variant="@variant">
+                        <RadzenNumeric @bind-Value="@promo.TotalCount" />
+                    </RadzenFormField> *@
+
+                    @if (!is_promotion)
+                    {
+                        <div class="row">
+                            <div class="col-8">
+                                <RadzenFormField Text="Общее количество" Variant="@variant" Style="width: 90%">
+                                    <RadzenNumeric @bind-Value="@promo.TotalCount" />
+                                </RadzenFormField>
+                            </div>
+                            <div class="col-4" style="margin-top: 10px">
+                                <RadzenCheckBox @bind-Value="@promo.IsUnique" Name="CheckBox3" />
+                                <RadzenLabel Text="Уникальный" Component="CheckBox3" Style="margin-left: 1%;" />
+                            </div>
+                        </div>
+                    }
+
+                    <RadzenCard Style="display: flex;flex-direction: column;">
+                        <RadzenLabel Text="Арбитраж: несовместимые продукты" Component="DropDownMultipleChips" Style="margin-right: 8px; margin-top: 3px; vertical-align: middle;" />
+                        <RadzenDropDownDataGrid @ref="products_grid" Chips="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" AllowClear="true" @bind-Value=@ProductIds
+                                                MaxSelectedLabels="10" PageNumbersCount="3" Multiple="true" Placeholder="Выберите продукты" Data=@Products TextProperty="Name_Ru" ValueProperty="Id" Name="DropDownDataGridMultiple">
+                            <Columns>
+                                <RadzenDropDownDataGridColumn Width="7%" Sortable="false">
+                                    <HeaderTemplate>
+                                        <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select all" }})" Disabled="@(!products_grid.AllowSelectAll)" TriState="false"
+                                                        TValue="bool"
+                                                        Value="@(Products.Any(c => ProductIds != null && ProductIds.Contains(c.Id)))"
+                                                        Change="@(args => ProductIds = args ? products_grid.View.Cast<ProductModel>().Select(c => c.Id).ToList() : ProductIds = new List<Guid>())" />
+                                    </HeaderTemplate>
+                                    <Template Context="data">
+                                        <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select item" }})" TriState="false" Value="@(ProductIds != null && ProductIds.Contains(((ProductModel) data).Id))"
+                                                        TValue="bool" Change=@(args => products_grid.SelectItem(data)) @onclick:stopPropagation />
+                                    </Template>
+                                </RadzenDropDownDataGridColumn>
+                                <RadzenDropDownDataGridColumn Property="Name_Ru" Title="Название" />
+                            </Columns>
+                        </RadzenDropDownDataGrid>
+                    </RadzenCard>
+
+                    <RadzenButton style="width: 160px" Disabled="@is_save_disabled" Icon="save" BusyText="Сохранить ..." IsBusy=@busy Click=@OnSaveClick Text="Сохранить">
+                        @(is_save_disabled ? "Подождите..." : "Сохранить")
+                        </RadzenButton>
+                </RadzenStack>
+            </RadzenColumn>
+        </RadzenRow>
+    </RadzenCard>
+    
+    <div style="display: flex;row-gap: 25px;flex-direction: column;align-items: stretch; width: 50%;">
+        <div>
+            <RadzenCard Style="display: flex; flex-direction: column;">
+                <RadzenLabel Text="Выберите регионы" Component="DropDownMultipleChips" Style="margin-right: 8px; vertical-align: middle;" />
+                <RadzenDropDown @bind-Value=@RegionId Data=@Regions TextProperty="Name_Ru" ValueProperty="Id" Name="DropDownMultipleChips"
+                                MaxSelectedLabels="10" Multiple=true AllowClear=true Placeholder="Выберите регионы" Chips=true Style="width: 100%;" />
+            </RadzenCard>
+        </div>
+        <div>
+            <RadzenCard Style="display: flex;flex-direction: column;">
+                <RadzenLabel Text="Выберите рестораны" Component="DropDownMultipleChips" Style="margin-right: 8px; vertical-align: middle;" />
+                <RadzenDropDownDataGrid @ref="grid" Chips="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" AllowClear="true" @bind-Value=@BranchId
+                                        MaxSelectedLabels="10" Multiple="true" Placeholder="Выберите рестораны" Data=@Branchs TextProperty="Name" ValueProperty="Id" Name="DropDownDataGridMultiple">
+                    <Columns>
+                        <RadzenDropDownDataGridColumn Width="60px" Sortable="false">
+                            <HeaderTemplate>
+                                <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select all" }})" Disabled="@(!grid.AllowSelectAll)" TriState="false"
+                                                TValue="bool"
+                                                Value="@(Branchs.Any(c => BranchId != null && BranchId.Contains(c.Id)))"
+                                                Change="@(args => BranchId = args ? grid.View.Cast<RestaurantModel>().Select(c => c.Id).ToList() : BranchId = new List<Guid>())" />
+                            </HeaderTemplate>
+                            <Template Context="data">
+                                <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select item" }})" TriState="false" Value="@(BranchId != null && BranchId.Contains(((RestaurantModel) data).Id))"
+                                                TValue="bool" Change=@(args => grid.SelectItem(data)) @onclick:stopPropagation />
+                            </Template>
+                        </RadzenDropDownDataGridColumn>
+                        <RadzenDropDownDataGridColumn Property="Region.Name_Ru" Title="Название региона" Width="100px" />
+                        <RadzenDropDownDataGridColumn Property="Name" Title="Название ресторана" Width="200px" />
+                    </Columns>
+                </RadzenDropDownDataGrid>
+            </RadzenCard>
+        </div>
+
+        <div>
+            <RadzenCard Style="display: flex;flex-direction: column;">
+                <RadzenLabel Text="Выберите интеграции" Component="DropDownMultipleChips" Style="margin-right: 8px; vertical-align: middle;" />
+                <RadzenDropDownDataGrid @ref="integrations_grid" Chips="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" AllowClear="true" @bind-Value=@IntegrationsIds
+                                        MaxSelectedLabels="10" Multiple="true" Placeholder="Выберите интеграции" Data=@IntegrationsList TextProperty="Name" ValueProperty="Id" Name="DropDownDataGridMultiple">
+                    <Columns>
+                        <RadzenDropDownDataGridColumn Width="60px" Sortable="false">
+                            <HeaderTemplate>
+                                <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select all" }})" Disabled="@(!integrations_grid.AllowSelectAll)" TriState="false"
+                                                TValue="bool"
+                                                Value="@(IntegrationsList.Any(c => IntegrationsIds != null && IntegrationsIds.Contains(c.Id)))"
+                                                Change="@(args => IntegrationsIds = args ? integrations_grid.View.Cast<Integration>().Select(c => c.Id).ToList() : IntegrationsIds = new List<int>())" />
+                            </HeaderTemplate>
+                            <Template Context="data">
+                                <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select item" }})" TriState="false" Value="@(IntegrationsIds != null && IntegrationsIds.Contains(((Integration) data).Id))"
+                                                TValue="bool" Change=@(args => integrations_grid.SelectItem(data)) @onclick:stopPropagation />
+                            </Template>
+                        </RadzenDropDownDataGridColumn>
+                        <RadzenDropDownDataGridColumn Property="Name" Title="Название" Width="200px" />
+                    </Columns>
+                </RadzenDropDownDataGrid>
+            </RadzenCard>
+        </div>
+
+        @* HERE *@
+        <div>
+            <RadzenCard Style="display: flex;flex-direction: column;">
+                <RadzenLabel Text="Выберите группу" Component="DropDownMultipleChips" Style="margin-right: 8px; vertical-align: middle;" />
+                <RadzenDropDown AllowClear="true" @bind-Value="@GroupId"
+                                AllowVirtualization="true"
+                                Name="DropDownVirtualization"
+                                AllowFiltering="true" Data="@Groups"
+                                PageSize="10"
+                                Count="@GroupCount"
+                                LoadData="LoadGroups"
+                                TextProperty="@nameof(PromoGroupModel.Name)"
+                                ValueProperty="@nameof(PromoGroupModel.Id)" />
+            </RadzenCard>
+        </div>
+        @* HERE *@
+
+        @if (promo.View == PromoView.FreeProduct)
+        {
+            <div>
+                <RadzenCard Style="display: flex;flex-direction: column; row-gap: 10px;">
+
+                    <div class="row">
+                        <div class="col">
+                            <h3>Блюда</h3>
+                        </div>
+                        <div class="col">
+                            <RadzenButton Click=@(args => AddFreeProduct()) Text="Добавить" Icon="add_circle_outline"
+                                          class="float-end" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Medium" />
+                        </div>
+                    </div>
+                    <RadzenDataGrid @ref="freeProductGrid" TItem="NewProduct" Data="@freeProducts" ValueChanged="@ProductDataChanged" GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Name" Title="Блюда" />
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Count" Title="Количество" />
+                            <RadzenDataGridColumn Context="pro" TItem="NewProduct" TextAlign="TextAlign.Right">
+                                <Template Context="pro">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Size="ButtonSize.Medium"
+                                                  Click="@(args => DeleteFreeProduct(pro))">
+                                    </RadzenButton>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+
+                </RadzenCard>
+            </div>
+        }
+        else if (promo.View == PromoView.ProductDiscount)
+        {
+            <div>
+                <RadzenCard Style="display: flex;flex-direction: column; row-gap: 10px;">
+
+                    <div class="row">
+                        <div class="col">
+                            <h3>Блюда</h3>
+                        </div>
+                        <div class="col">
+                            <RadzenButton Click=@(args => AddProductDiscount()) Text="Добавить" Icon="add_circle_outline"
+                                          class="float-end" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Medium" />
+                        </div>
+                    </div>
+
+                    <RadzenDataGrid @ref="productGrid" TItem="NewProduct" Data="@products" ValueChanged="@ProductDataChanged" GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Name" Title="Наименование товара" />
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Count" Title="Количество" />
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Discount" Title="Скидка" />
+                            <RadzenDataGridColumn Context="pro" TItem="NewProduct" TextAlign="TextAlign.Right">
+                                <Template Context="pro">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Size="ButtonSize.Medium"
+                                                  Click="@(args => DeleteProduct(pro))">
+                                    </RadzenButton>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+
+                </RadzenCard>
+            </div>
+        }
+        else if (promo.View == PromoView.PromotionalProduct)
+        {
+            <div>
+                <RadzenCard Style="display: flex;flex-direction: column; row-gap: 10px;">
+
+                    <div class="row">
+                        <div class="col">
+                            <h3>Блюда</h3>
+                        </div>
+                        <div class="col">
+                            <RadzenButton Click=@(args => AddPromotionalProduct()) Text="Добавить" Icon="add_circle_outline"
+                                          class="float-end" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Medium" />
+                        </div>
+                    </div>
+
+                    <RadzenDataGrid @ref="promotionalProdGrid" TItem="NewProduct" Data="@promotionalProducts.PromoProducts" ValueChanged="@ProductDataChanged" GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Name" Title="Наименование товара" />
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Count" Title="Количество" />
+                            <RadzenDataGridColumn Context="pro" TItem="NewProduct" TextAlign="TextAlign.Right">
+                                <Template Context="pro">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Size="ButtonSize.Medium"
+                                                  Click="@(args => DeletePromotionalProduct(pro))">
+                                    </RadzenButton>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+
+                </RadzenCard>
+            </div>
+            <div>
+                <RadzenCard Style="display: flex;flex-direction: column; row-gap: 10px;">
+
+                    <div class="row">
+                        <div class="col">
+                            <h3>Акционное блюда</h3>
+                        </div>
+                        <div class="col">
+                            <RadzenButton Click=@(args => AddConditionProduct()) Text="Добавить" Icon="add_circle_outline"
+                                          class="float-end" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Medium" />
+                        </div>
+                    </div>
+
+                    <RadzenDataGrid @ref="conditionProdGrid" TItem="NewProduct" Data="@promotionalProducts.ConditionProducts" ValueChanged="@ProductDataChanged" GridLines="DataGridGridLines.Horizontal">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Name" Title="Наименование товара" />
+                            <RadzenDataGridColumn TItem="NewProduct" Property="Count" Title="Количество" />
+                            <RadzenDataGridColumn Context="pro" TItem="NewProduct" TextAlign="TextAlign.Right">
+                                <Template Context="pro">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Size="ButtonSize.Medium"
+                                                  Click="@(args => DeleteConditionProduct(pro))">
+                                    </RadzenButton>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+
+                </RadzenCard>
+            </div>
+        }
+        else if (promo.View == PromoView.OrderMinSumPromotion)
+        {
+            <RadzenCard Style="display: flex;flex-direction: column;">
+                <RadzenLabel Text="Акционный товар" Component="DropDownMultipleChips" Style="margin-right: 8px; margin-top: 3px; vertical-align: middle;" />
+                <RadzenDropDownDataGrid @ref="promotional_products_grid" Chips="true" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" AllowClear="true" @bind-Value=@promotional_product_id
+                                        PageNumbersCount="3" Multiple="false" Placeholder="Выберите товар" Data=@Products TextProperty="Name_Ru" ValueProperty="Id" Name="DropDownDataGridMultiple">
+                    <Columns>
+                        <RadzenDropDownDataGridColumn Width="7%" Sortable="false">
+                            <HeaderTemplate>
+                                <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select all" }})"
+                                                TValue="bool"
+                                                Value="@(Products.Any(c => c.Id == promotional_product_id))"
+                                                 />
+                            </HeaderTemplate>
+                            
+                        </RadzenDropDownDataGridColumn>
+                        <RadzenDropDownDataGridColumn Property="Name_Ru" Title="Название" />
+                    </Columns>
+                </RadzenDropDownDataGrid>
+            </RadzenCard>
+        }
+
+        @if (promo.Type == PromoType.Personal)
+        {
+            <div>
+                <RadzenCard Style="display: flex; flex-direction: column; row-gap: 10px;">
+                    <div class="row">
+                        <div class="col-5">
+                            <h3>Клиенты</h3>
+                        </div>
+                        <div class="col-4">
+                            <InputFile id="files" accept=".xlsx" OnChange="@HandleFileSelected" />
+                        </div>
+                        <div class="col-3">
+                            <RadzenButton Click=@(args => AddPerson()) Text="Добавить" Icon="add_circle_outline"
+                                          class="float-end" ButtonStyle="ButtonStyle.Primary" Size="ButtonSize.Medium" />
+                        </div>
+                    </div>
+
+                    <RadzenDataGrid @ref="phoneGrid" TItem="Phone" Data="@phone" ValueChanged="@PhoneDataChanged"
+                                    GridLines="DataGridGridLines.Horizontal" style="height: 240px;">
+                        <Columns>
+                            <RadzenDataGridColumn TItem="Phone" Property="Number" Title="Номер телефона" />
+                            <RadzenDataGridColumn Context="num" TItem="Phone" TextAlign="TextAlign.Right">
+                                <Template Context="num">
+                                    <RadzenButton Icon="delete" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Size="ButtonSize.Medium"
+                                                  Click="@(args => DeleteNumber(num))">
+                                    </RadzenButton>
+                                </Template>
+                            </RadzenDataGridColumn>
+                        </Columns>
+                    </RadzenDataGrid>
+                </RadzenCard>
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public string Id { get; set; }
+
+    Variant variant = Variant.Outlined;
+    RadzenDropDownDataGrid<List<Guid>> grid;
+    RadzenDropDownDataGrid<Guid> gridProduct;
+    RadzenDropDownDataGrid<List<int>> gridGroup;
+
+    RadzenDropDownDataGrid<List<Guid>> products_grid;
+    RadzenDropDownDataGrid<Guid> promotional_products_grid;
+    RadzenDropDownDataGrid<List<int>> integrations_grid;
+
+    RadzenDataGrid<Phone> phoneGrid;
+    RadzenDataGrid<NewProduct> productGrid, freeProductGrid, conditionProdGrid, promotionalProdGrid;
+    bool busy;
+    bool stratTime;
+    bool type;
+    bool view;
+    bool segment;
+
+    bool is_promotion;
+    bool is_save_disabled;
+
+    ApplicationDbContext _dbApp;
+
+    PromoType selectedPromoType { get; set; }
+    Promo promo = new();
+    Dictionary<PromoType, string> Type = new Dictionary<PromoType, string> { { PromoType.All, "Все" }, { PromoType.Personal, "Персональный" }, { PromoType.Segment, "Сегмент" } };
+
+    Dictionary<PromoView, string> View = new Dictionary<PromoView, string> {
+        { PromoView.FreeDelivery, "Бесплатная доставка" },
+        { PromoView.FreeProduct, "Бесплатный продукт" },
+        { PromoView.OrderDiscount, "Скидка на заказ (%)" },
+        { PromoView.OrderDiscountAmount, "Скидка на заказ (сум)" },
+        { PromoView.ProductDiscount, "Скидка на продукт" },
+        { PromoView.PromotionalProduct, "Акционное блюда" },      
+         };
+
+    List<RegionModel> Regions;
+    List<ProductModel> Products;
+    List<RestaurantModel> Branchs;
+    List<PromoGroupModel> Groups;
+    List<Integration> IntegrationsList;
+
+    List<Segment> Segments;
+    List<Phone> phone = new List<Phone>();
+    List<int> RegionId = new List<int>();
+    List<NewProduct> products = new List<NewProduct>();
+    List<NewProduct> freeProducts = new List<NewProduct>();
+    PromotionalProducts promotionalProducts = new PromotionalProducts();
+    List<Guid> BranchId = new List<Guid>();
+    List<Guid> ProductIds = new List<Guid>();
+    List<int> IntegrationsIds = new List<int>();
+
+    int GroupId = 0;
+    int GroupCount = 0;
+    Guid productId;
+    int productCount;
+    int productDiscount;
+    bool isActiveRegions = false;
+    string? number;
+    decimal? minOrderAmount, maxOrderAmount;
+
+    Guid promotional_product_id;
+
+    protected async override void OnInitialized()
+    {
+        is_save_disabled = false;
+
+        ReloadContext();
+        await LoadRegions();
+        await LoadBranchs();
+        await LoadProducts();
+        await LoadSegments();
+        await LoadIntegrations();
+        // await LoadGroups();
+
+        if (!string.IsNullOrEmpty(Id))
+        {
+            var prom = _dbApp.Promos.Where(a => a.Id == long.Parse(Id) && a.IsDeleted == false).FirstOrDefault();
+            promo = new Promo
+                {
+                    Name = prom.Name,
+                    MaxCount = prom.MaxCount,
+                    StartTime = prom.StartTime,
+                    EndTime = prom.EndTime,
+                    MinOrderAmount = prom.MinOrderAmount / 100,
+                    MaxOrderAmount = prom.MaxOrderAmount / 100,
+                    OrderDiscount = prom.OrderDiscount,
+                    Type = prom.Type,
+                    View = prom.View,
+                    SegmentId = prom.SegmentId,
+                    TotalCount = prom.TotalCount,
+                    IsUnique = prom.IsUnique,
+                    IsPromotion = prom.IsPromotion,
+                };
+            GroupId = prom.GroupId ?? 0;
+            minOrderAmount = promo.MinOrderAmount;
+            maxOrderAmount = promo.MaxOrderAmount;
+
+            var promRegion = _dbApp.PromoRegions.Where(a => a.PromoId == prom.Id).ToList();
+            var promRes = _dbApp.PromoRestaurants.Where(a => a.PromoId == prom.Id).ToList();
+            var promoProducts = _dbApp.PromoProducts.Where(a => a.PromoId == prom.Id).ToList();
+            var promoProductFeatures = _dbApp.PromoProductFeatures.Where(a => a.PromoId == prom.Id).ToList();
+            var promClients = _dbApp.PromoClients.Where(a => a.PromoId == prom.Id).ToList();
+            var promo_arbitrations = _dbApp.PromoArbitrations.Where(x => x.PromoId == prom.Id).ToList();
+            var promo_integrations = _dbApp.PromoIntegrations.Where(x => x.PromoId == prom.Id).ToList();
+
+            foreach (var item in promRegion)
+            {
+                RegionId.Add(item.RegionId);
+            }
+
+            foreach (var item in promRes)
+            {
+                BranchId.Add(item.RestaurantId);
+            }
+
+            foreach (var item in promo_arbitrations)
+            {
+                ProductIds.Add(item.ProductId);
+            }
+
+            foreach (var item in promo_integrations)
+            {
+                IntegrationsIds.Add(item.IntegrationId);
+            }
+
+            foreach (var item in promoProducts)
+            {
+                var prod = _dbDelivery.Products.Where(a => a.Id == Guid.Parse(item.ProductId)).FirstOrDefault();
+                if (prod != null && promo.View == PromoView.FreeProduct)
+                {
+                    freeProducts.Add(new NewProduct
+                        {
+                            Id = Guid.Parse(item.ProductId),
+                            Count = item.Count,
+                            Name = prod.Name_Ru
+                        });
+                }
+                else if (prod != null && promo.View == PromoView.ProductDiscount)
+                {
+                    products.Add(new NewProduct
+                        {
+                            Id = Guid.Parse(item.ProductId),
+                            Count = item.Count,
+                            Discount = item.Discount,
+                            Name = prod.Name_Ru
+                        });
+                }
+                else if (prod != null && promo.View == PromoView.PromotionalProduct)
+                {
+                    promotionalProducts.PromoProducts.Add(new NewProduct
+                        {
+                            Id = Guid.Parse(item.ProductId),
+                            Count = item.Count,
+                            Name = prod.Name_Ru
+                        });
+                }
+                else if (prod != null && promo.View == PromoView.OrderMinSumPromotion)
+                {
+                    promotional_product_id = Guid.Parse(item.ProductId);
+                }
+            }
+
+            foreach (var item in promoProductFeatures)
+            {
+                var prod = _dbDelivery.Products.Where(a => a.Id == Guid.Parse(item.ProductId)).FirstOrDefault();
+                if (prod != null && promo.View == PromoView.PromotionalProduct)
+                {
+                    promotionalProducts.ConditionProducts.Add(new NewProduct
+                        {
+                            Id = Guid.Parse(item.ProductId),
+                            Count = item.Count,
+                            Name = prod.Name_Ru
+                        });
+                }
+
+            }
+
+            foreach (var item in promClients)
+            {
+                if (!item.TimeOfUse.HasValue)
+                {
+                    phone.Add(new Phone
+                        {
+                            Number = item.Phone
+                        });
+                }
+            }
+
+            if (promClients.Any(a => a.TimeOfUse.HasValue))
+            {
+                stratTime = true;
+                type = true;
+                view = true;
+                segment = true;
+            }
+            else if (!promClients.Any(a => a.TimeOfUse.HasValue) && promoProducts.Count == 0 && promClients.Count == 0)
+            {
+                stratTime = false;
+                type = false;
+                view = false;
+                segment = false;
+            }
+            else
+            {
+                stratTime = false;
+                type = true;
+                view = true;
+                segment = true;
+            }
+
+        }           
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        //check promo or promotion
+        var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+        is_promotion = uri.AbsolutePath.ToLower().Contains("promotion");
+
+        if (is_promotion) View.Add(PromoView.OrderMinSumPromotion, "Минимальная сумма для акционного товара");
+
+        is_save_disabled = false;
+        await Task.CompletedTask;
+    }
+
+    void ReloadContext()
+    {
+        _dbApp = ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    }
+
+    private void PhoneDataChanged()
+    {
+        if (!string.IsNullOrEmpty(Id))
+        {
+            if (phone.Count == 0 && products.Count == 0 && freeProducts.Count == 0)
+            {
+                stratTime = false;
+                type = false;
+                view = false;
+                segment = false;
+            }
+        }
+    }
+    private void ProductDataChanged()
+    {
+        if (!string.IsNullOrEmpty(Id))
+        {
+            if (phone.Count == 0 && products.Count == 0 && freeProducts.Count == 0)
+            {
+                stratTime = false;
+                type = false;
+                view = false;
+                segment = false;
+            }
+        }
+    }
+
+
+    private void OnClick()
+    {
+        isActiveRegions = !isActiveRegions;
+    }
+
+    public class Phone
+    {
+        public string Number { get; set; }
+    }
+
+    public async Task LoadRegions()
+    {
+        var regions = _dbDelivery.Regions.Select(a => new RegionModel
+            {
+                Id = a.Id,
+                Name_En = a.Name_En,
+                Name_Ru = a.Name_Ru,
+                Name_Uz = a.Name_Uz
+            }).ToList();
+        Regions = regions;
+    }
+
+    public async Task LoadBranchs()
+    {
+        var branchs = _dbDelivery.Restaurants.Select(a => new RestaurantModel
+            {
+                Id = a.Id,
+                Name = a.Name,
+                RegionId = a.RegionId,
+                Region = new RegionModel
+                {
+                    Id = a.Region.Id,
+                    Name_En = a.Region.Name_En,
+                    Name_Ru = a.Region.Name_Ru,
+                    Name_Uz = a.Region.Name_Uz
+                }
+            }).ToList();
+        Branchs = branchs;
+    }
+
+    public async Task LoadGroups(LoadDataArgs args = null)
+    {
+        int skip = 0;
+        int take = 10;
+        string search = "";
+        if (args != null)
+        {
+            search = args.Filter;
+            skip = args.Skip ?? 0;
+            take = args.Top ?? 10;
+        }
+        var res = await promoGroupService.List(skip, take, search, new(), new());
+        Groups = res.List;
+        GroupCount = res.Total;
+    }
+
+    public async Task LoadSegments()
+    {
+        var segments = _dbApp.Segments.ToList();
+        Segments = segments;
+    }
+
+    public async Task LoadProducts()
+    {
+        var products = _dbDelivery.Products.Include(a => a.Category).Select(a => new ProductModel
+            {
+                Id = a.Id,
+                CategoryId = a.CategoryId,
+                Category = new ProductCategoryModel
+                {
+                    Id = a.Category.Id,
+                    Name_En = a.Category.Name_En,
+                    Name_Ru = a.Category.Name_Ru,
+                    Name_Uz = a.Category.Name_Uz,
+                },
+                Name_En = a.Name_En,
+                Name_Ru = a.Name_Ru,
+                Name_Uz = a.Name_Uz
+            }).ToList();
+
+        Products = products;
+    }
+
+    async Task LoadIntegrations()
+    {
+        var integrations = _dbApp.Integrations.Where(x => x.IsActive).ToList();
+        IntegrationsList = integrations;
+    }
+
+    void AddClientDialogClose(dynamic result)
+    {
+        dialogService.OnClose -= AddClientDialogClose;
+
+        if (result != null)
+        {
+            phone.Add(new Phone { Number = result });
+            number = null;
+            phoneGrid.Reload();
+            StateHasChanged();
+        }
+    }
+    public void AddPerson()
+    {
+        dialogService.OnClose += AddClientDialogClose;
+
+        dialogService.Open<Client>("Добавить клиента",
+           options: new DialogOptions() { Width = "500px", Height = "210px" });
+
+    }
+
+    void AddFreeProductDialogClose(dynamic result)
+    {
+        dialogService.OnClose -= AddFreeProductDialogClose;
+
+        if (result != null)
+        {
+            var productId = result.productId as Guid?;
+            if (productId.HasValue && productId != Guid.Empty)
+            {
+                var productCount = result.productCount as int?;
+                var prod = _dbDelivery.Products.FirstOrDefault(a => a.Id == productId);
+                if (prod != null)
+                    freeProducts.Add(new NewProduct { Id = prod.Id, Name = prod.Name_Ru, Count = productCount ?? 1 });
+            }
+            freeProductGrid.Reload();
+            StateHasChanged();
+        }
+    }
+    public void AddFreeProduct()
+    {
+        dialogService.OnClose += AddFreeProductDialogClose;
+
+        dialogService.Open<FreeProduct>("Добавить блюда",
+           options: new DialogOptions() { Width = "500px", Height = "270px" });
+    }
+
+    void AddPromotionalProductDialogClose(dynamic result)
+    {
+        dialogService.OnClose -= AddPromotionalProductDialogClose;
+
+        if (result != null)
+        {
+            var productId = result.productId as Guid?;
+            if (productId.HasValue && productId != Guid.Empty)
+            {
+                var productCount = result.productCount as int?;
+                var prod = _dbDelivery.Products.FirstOrDefault(a => a.Id == productId);
+                if (prod != null)
+                    promotionalProducts.PromoProducts.Add(new NewProduct { Id = prod.Id, Name = prod.Name_Ru, Count = productCount ?? 1 });
+            }
+            promotionalProdGrid.Reload();
+            StateHasChanged();
+        }
+    }
+    public void AddPromotionalProduct()
+    {
+        dialogService.OnClose += AddPromotionalProductDialogClose;
+
+        dialogService.Open<PromotionalProduct>("Добавить блюда",
+           options: new DialogOptions() { Width = "500px", Height = "270px" });
+    }
+
+    void AddConditionProductDialogClose(dynamic result)
+    {
+        dialogService.OnClose -= AddConditionProductDialogClose;
+
+        if (result != null)
+        {
+            var productId = result.productId as Guid?;
+            if (productId.HasValue && productId != Guid.Empty)
+            {
+                var productCount = result.productCount as int?;
+                var prod = _dbDelivery.Products.FirstOrDefault(a => a.Id == productId);
+                if (prod != null)
+                    promotionalProducts.ConditionProducts.Add(new NewProduct { Id = prod.Id, Name = prod.Name_Ru, Count = productCount ?? 1 });
+            }
+            conditionProdGrid.Reload();
+            StateHasChanged();
+        }
+    }
+    public void AddConditionProduct()
+    {
+        dialogService.OnClose += AddConditionProductDialogClose;
+
+        dialogService.Open<ConditionProduct>("Добавить блюда",
+           options: new DialogOptions() { Width = "500px", Height = "270px" });
+    }
+
+    void AddProductDiscountDialogClose(dynamic result)
+    {
+        dialogService.OnClose -= AddProductDiscountDialogClose;
+
+        if (result != null)
+        {
+            var productId = result.productId as Guid?;
+            if (productId.HasValue && productId != Guid.Empty)
+            {
+                var productCount = result.productCount as int?;
+                var productDiscount = result.productDiscount as int?;
+                var prod = _dbDelivery.Products.FirstOrDefault(a => a.Id == productId);
+                if (prod != null)
+                    products.Add(new NewProduct
+                        {
+                            Id = prod.Id,
+                            Name = prod.Name_Ru,
+                            Count = productCount ?? 1,
+                            Discount = productDiscount ?? 0
+                        });
+            }
+            productGrid.Reload();
+            StateHasChanged();
+        }
+    }
+    public void AddProductDiscount()
+    {
+        dialogService.OnClose += AddProductDiscountDialogClose;
+
+        dialogService.Open<ProductDiscount>("Добавить блюда",
+           options: new DialogOptions() { Width = "500px", Height = "330px" });
+    }
+
+    public void DeleteNumber(Phone num)
+    {
+        phone.Remove(num);
+        phoneGrid.Reload();
+        StateHasChanged();
+    }
+
+    public void DeleteProduct(NewProduct pro)
+    {
+        products.Remove(pro);
+        productId = Guid.Empty;
+        productGrid.Reload();
+        StateHasChanged();
+    }
+
+    public void DeleteConditionProduct(NewProduct pro)
+    {
+        promotionalProducts.ConditionProducts.Remove(pro);
+        //productId = Guid.Empty;
+        conditionProdGrid.Reload();
+        StateHasChanged();
+    }
+    public void DeletePromotionalProduct(NewProduct pro)
+    {
+        promotionalProducts.PromoProducts.Remove(pro);
+        //productId = Guid.Empty;
+        promotionalProdGrid.Reload();
+        StateHasChanged();
+    }
+
+    public void DeleteFreeProduct(NewProduct pro)
+    {
+        freeProducts.Remove(pro);
+        freeProductGrid.Reload();
+        StateHasChanged();
+    }
+
+    private void GenerateRandomString()
+    {
+        const string chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+        Random random = new Random();
+
+        char[] result = new char[6];
+        for (int i = 0; i < 6; i++)
+        {
+            result[i] = chars[random.Next(chars.Length)];
+        }
+
+        promo.Name = new string(result);
+
+        //return new string(result);
+    }
+
+    public async void OnSaveClick()
+    {
+        if (is_save_disabled) return;
+
+        is_save_disabled = true;
+        StateHasChanged();
+
+        try
+        {
+            if (!string.IsNullOrEmpty(Id))
+            {
+                using (var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+                {
+                    try
+                    {
+                        using var serviceScope = ServiceProvider.CreateScope();
+                        _dbApp = serviceScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                        if (string.IsNullOrEmpty(promo.Name))
+                        {
+                            scope.Dispose();
+                            throw new Exception("Название промо-акции не может быть нулевым.");
+                        }
+
+                        if (promo.Type == PromoType.Segment && promo.SegmentId == 0)
+                        {
+                            scope.Dispose();
+                            throw new Exception("Segment can't be null!");
+                        }
+                        var prod = _dbApp.Promos.Where(a => a.Id == long.Parse(Id)).FirstOrDefault();
+
+                        prod.Name = promo.Name;
+                        prod.MaxCount = promo.MaxCount;
+                        prod.StartTime = promo.StartTime < DateTime.Now ? DateTime.Now : promo.StartTime;
+                        prod.EndTime = promo.EndTime;
+                        prod.MinOrderAmount = minOrderAmount.HasValue ? (long)Math.Ceiling(minOrderAmount.Value * 100) : null;
+                        prod.MaxOrderAmount = maxOrderAmount.HasValue ? (long)Math.Ceiling(maxOrderAmount.Value * 100) : null;
+                        prod.OrderDiscount = promo.OrderDiscount;
+                        prod.Type = promo.Type;
+                        prod.View = promo.View;
+                        prod.SegmentId = promo.SegmentId;
+                        prod.TotalCount = promo.TotalCount;
+                        prod.GroupId = GroupId == 0 ? null : GroupId;
+                        //prod.IsUnique = promo.IsUnique;
+
+                        if (RegionId != null && RegionId.Count > 0)
+                        {
+                            var regions = _dbApp.PromoRegions.Where(a => a.PromoId == prod.Id).ToList();
+                            foreach (var item in RegionId)
+                            {
+                                if (regions.Count == 0 || !regions.Any(a => a.RegionId == item))
+                                {
+                                    _dbApp.PromoRegions.Add(new PromoRegion
+                                        {
+                                            PromoId = prod.Id,
+                                            RegionId = item
+                                        });
+                                    _dbApp.SaveChanges();
+
+                                }
+                            }
+
+                            foreach (var reg in regions)
+                            {
+                                if (!RegionId.Contains(reg.RegionId))
+                                {
+                                    _dbApp.PromoRegions.Remove(reg);
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var regions = _dbApp.PromoRegions.Where(a => a.PromoId == prod.Id).ToList();
+
+                            if (regions.Count > 0)
+                            {
+                                foreach (var reg in regions)
+                                {
+                                    _dbApp.PromoRegions.Remove(reg);
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                        }
+
+                        if (BranchId != null && BranchId.Count > 0)
+                        {
+                            var ress = _dbApp.PromoRestaurants.Where(a => a.PromoId == prod.Id).ToList();
+                            foreach (var item in BranchId)
+                            {
+                                if (ress.Count == 0 || !ress.Any(a => a.RestaurantId == item))
+                                {
+                                    _dbApp.PromoRestaurants.Add(new PromoRestaurant
+                                        {
+                                            PromoId = prod.Id,
+                                            RestaurantId = item
+                                        });
+                                    _dbApp.SaveChanges();
+
+                                }
+                            }
+
+                            foreach (var res in ress)
+                            {
+                                if (!BranchId.Contains(res.RestaurantId))
+                                {
+                                    _dbApp.PromoRestaurants.Remove(res);
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var ress = _dbApp.PromoRestaurants.Where(a => a.PromoId == prod.Id).ToList();
+
+                            if (ress.Count > 0)
+                            {
+                                foreach (var res in ress)
+                                {
+                                    _dbApp.PromoRestaurants.Remove(res);
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                        }
+
+                        if (IntegrationsIds != null && IntegrationsIds.Count > 0)
+                        {
+                            var promo_integrations = _dbApp.PromoIntegrations.Where(a => a.PromoId == prod.Id).ToList();
+
+                            foreach (var item in IntegrationsIds)
+                            {
+                                if (!promo_integrations.Any(a => a.IntegrationId == item))
+                                {
+                                    _dbApp.PromoIntegrations.Add(new PromoIntegration
+                                        {
+                                            PromoId = prod.Id,
+                                            IntegrationId = item
+                                        });
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+
+                            foreach (var item in promo_integrations)
+                            {
+                                if (!IntegrationsIds.Contains(item.IntegrationId))
+                                {
+                                    _dbApp.PromoIntegrations.Remove(item);
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var promo_integrations = _dbApp.PromoIntegrations.Where(a => a.PromoId == prod.Id).ToList();
+
+                            if (promo_integrations.Count > 0)
+                            {
+                                _dbApp.PromoIntegrations.RemoveRange(promo_integrations);
+                                _dbApp.SaveChanges();
+                            }
+                        }
+
+                        if (ProductIds != null && ProductIds.Count > 0)
+                        {
+                            var promo_arbitrations = _dbApp.PromoArbitrations.Where(a => a.PromoId == prod.Id).ToList();
+
+                            foreach (var item in ProductIds)
+                            {
+                                if (!promo_arbitrations.Any(a => a.ProductId == item))
+                                {
+                                    _dbApp.PromoArbitrations.Add(new PromoArbitration
+                                        {
+                                            PromoId = prod.Id,
+                                            ProductId = item
+                                        });
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+
+                            foreach (var item in promo_arbitrations)
+                            {
+                                if (!ProductIds.Contains(item.ProductId))
+                                {
+                                    _dbApp.PromoArbitrations.Remove(item);
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var promo_arbitrations = _dbApp.PromoArbitrations.Where(a => a.PromoId == prod.Id).ToList();
+
+                            if (promo_arbitrations.Count > 0)
+                            {
+                                _dbApp.PromoArbitrations.RemoveRange(promo_arbitrations);
+                                _dbApp.SaveChanges();
+                            }
+                        }
+
+                        if (promo.Type == PromoType.Personal)
+                        {
+                            if (phone.Count > 0)
+                            {
+                                var clients = _dbApp.PromoClients.Where(a => a.PromoId == prod.Id && !a.TimeOfUse.HasValue).ToList();
+                                foreach (var num in phone)
+                                {
+                                    var number = num.Number.Trim().Replace(" ", "");
+
+                                    if (clients.Count == 0 || !clients.Any(a => a.Phone == number))
+                                    {
+                                        _dbApp.PromoClients.Add(new PromoClient
+                                            {
+                                                Phone = number,
+                                                PromoId = prod.Id
+                                            });
+                                        _dbApp.SaveChanges();
+                                    }
+                                }
+
+                                foreach (var item in clients)
+                                {
+                                    if (!phone.Exists(a => a.Number.Trim().Replace(" ", "") == item.Phone))
+                                    {
+                                        _dbApp.PromoClients.Remove(item);
+                                        _dbApp.SaveChanges();
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                scope.Dispose();
+                                throw new Exception("Phone Number cannot be null");
+                            }
+                        }
+
+                        if (promo.View == PromoView.FreeProduct)
+                        {
+                            if (freeProducts.Count > 0)
+                            {
+                                var prods = _dbApp.PromoProducts.Where(a => a.PromoId == prod.Id && (!a.Discount.HasValue || a.Discount == 0)).ToList();
+                                foreach (var item in freeProducts)
+                                {
+                                    if (prods.Count == 0 || !prods.Any(a => a.ProductId == item.Id.ToString()))
+                                    {
+                                        _dbApp.PromoProducts.Add(new PromoProduct
+                                            {
+                                                ProductId = item.Id.ToString(),
+                                                Count = item.Count,
+                                                PromoId = prod.Id
+                                            });
+                                        _dbApp.SaveChanges();
+                                    }
+                                }
+
+
+                                foreach (var item in prods)
+                                {
+                                    if (!freeProducts.Any(a => a.Id == Guid.Parse(item.ProductId)))
+                                    {
+                                        _dbApp.PromoProducts.Remove(item);
+                                        _dbApp.SaveChanges();
+                                    }
+                                }
+
+                                //foreach (var item in prods)
+                                //{
+                                //    var a = freeProducts.Where(a => a.Id == Guid.Parse(item.ProductId)).FirstOrDefault();
+                                //    if (a == null)
+                                //    {
+                                //        _dbApp.PromoProducts.Remove(item);
+                                //        _dbApp.SaveChanges();
+                                //    }
+                                //}
+                            }
+                            else
+                            {
+                                scope.Dispose();
+                                throw new Exception("Product cannot be null");
+                            }
+                        }
+
+                        if (promo.View == PromoView.ProductDiscount)
+                        {
+                            if (products.Count > 0)
+                            {
+                                var prods = _dbApp.PromoProducts.Where(a => a.PromoId == prod.Id && a.Discount.HasValue).ToList();
+                                foreach (var item in products)
+                                {
+                                    if (prods.Count == 0 || !prods.Any(a => a.ProductId == item.Id.ToString()))
+                                    {
+                                        _dbApp.PromoProducts.Add(new PromoProduct
+                                            {
+                                                ProductId = item.Id.ToString(),
+                                                Discount = item.Discount,
+                                                Count = item.Count,
+                                                PromoId = prod.Id
+                                            });
+                                        _dbApp.SaveChanges();
+                                    }
+                                }
+
+                                foreach (var item in prods)
+                                {
+                                    if (!products.Any(a => a.Id == Guid.Parse(item.ProductId)))
+                                    {
+                                        _dbApp.PromoProducts.Remove(item);
+                                        _dbApp.SaveChanges();
+                                    }
+                                }
+
+                                //foreach (var item in prods)
+                                //{
+                                //    var a = products.Where(a => a.Id == Guid.Parse(item.ProductId)).FirstOrDefault();
+                                //    if (a == null)
+                                //    {
+                                //        _dbApp.PromoProducts.Remove(item);
+                                //        _dbApp.SaveChanges();
+                                //    }
+                                //}
+                            }
+                            else
+                            {
+                                scope.Dispose();
+                                throw new Exception("Product cannot be null");
+                            }
+                        }
+
+
+                        if (promo.View == PromoView.PromotionalProduct)
+                        {
+                            if (promotionalProducts.PromoProducts.Count > 0 && promotionalProducts.ConditionProducts.Count > 0)
+                            {
+                                var prodsPromotional = await _dbApp.PromoProducts.Where(a => a.PromoId == prod.Id).ToListAsync();
+                                foreach (var item in promotionalProducts.PromoProducts)
+                                {
+                                    if (prodsPromotional.Count == 0 || !prodsPromotional.Any(a => a.ProductId == item.Id.ToString()))
+                                    {
+                                        await _dbApp.PromoProducts.AddAsync(new PromoProduct
+                                            {
+                                                ProductId = item.Id.ToString(),
+                                                Count = item.Count,
+                                                PromoId = prod.Id
+                                            });
+                                        await _dbApp.SaveChangesAsync();
+                                    }
+                                }
+
+                                foreach (var item in prodsPromotional)
+                                {
+                                    if (!promotionalProducts.PromoProducts.Any(a => a.Id == Guid.Parse(item.ProductId)))
+                                    {
+                                        _dbApp.PromoProducts.Remove(item);
+                                        await _dbApp.SaveChangesAsync();
+                                    }
+                                }
+
+                                var prodsConditional = await _dbApp.PromoProductFeatures.Where(a => a.PromoId == prod.Id).ToListAsync();
+                                foreach (var item in promotionalProducts.ConditionProducts)
+                                {
+                                    if (prodsConditional.Count == 0 || !prodsConditional.Any(a => a.ProductId == item.Id.ToString()))
+                                    {
+                                        await _dbApp.PromoProductFeatures.AddAsync(new PromoProductFeature
+                                            {
+                                                ProductId = item.Id.ToString(),
+                                                Count = item.Count,
+                                                PromoId = prod.Id
+                                            });
+                                        await _dbApp.SaveChangesAsync();
+                                    }
+                                }
+
+                                foreach (var item in prodsConditional)
+                                {
+                                    if (!promotionalProducts.ConditionProducts.Any(a => a.Id == Guid.Parse(item.ProductId)))
+                                    {
+                                        _dbApp.PromoProductFeatures.Remove(item);
+                                        await _dbApp.SaveChangesAsync();
+                                    }
+                                }
+                            }
+                            else
+                            {
+                                scope.Dispose();
+                                throw new Exception("Product cannot be null");
+                            }
+                        }
+
+                        if (promo.View == PromoView.OrderMinSumPromotion)
+                        {
+                            if (promotional_product_id != Guid.Empty)
+                            {
+                                if (!_dbApp.PromoProducts.Any(x => x.PromoId == prod.Id && x.ProductId == promotional_product_id.ToString()))
+                                {
+                                    var promotional_promo = _dbApp.PromoProducts.FirstOrDefault(x=>x.PromoId == prod.Id);
+                                    _dbApp.PromoProducts.Remove(promotional_promo);
+
+                                    _dbApp.PromoProducts.Add(new PromoProduct
+                                        {
+                                            ProductId = promotional_product_id.ToString(),
+                                            Count = 1,
+                                            PromoId = prod.Id
+                                        });
+
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                            else
+                            {
+                                scope.Dispose();
+                                throw new Exception("Product cannot be null");
+                            }
+                        }
+
+                        await _dbApp.SaveChangesAsync();
+
+                        scope.Complete();
+
+                        if (!is_promotion) NavigationManager.NavigateTo("/");
+                        else NavigationManager.NavigateTo("/promotions");
+                    }
+                    catch (Exception e)
+                    {
+                        scope.Dispose();
+                        _logger.LogError(e, e.Message);
+                        NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{e.Message}", Duration = 4000 });
+
+                        //ReloadContext();
+                        is_save_disabled = false;
+                        StateHasChanged();
+                    }
+                }
+
+
+                // update promo ended here
+            }
+            else
+            {
+                using (var scope = new TransactionScope(TransactionScopeAsyncFlowOption.Enabled))
+                {
+                    try
+                    {
+                        using var serviceScope = ServiceProvider.CreateScope();
+                        _dbApp = serviceScope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+                        if (string.IsNullOrEmpty(promo.Name))
+                        {
+                            scope.Dispose();
+                            throw new Exception("Название промо-акции не может быть нулевым.");
+                        }
+
+                        if (promo.Type == PromoType.Segment && promo.SegmentId == 0)
+                        {
+                            scope.Dispose();
+                            throw new Exception("Segment can't be null!");
+                        }
+
+                        var promo_new = new Promo
+                            {
+                                Name = promo.Name,
+                                MaxCount = promo.MaxCount,
+                                StartTime = promo.StartTime < DateTime.Now ? DateTime.Now : promo.StartTime,
+                                EndTime = promo.EndTime,
+                                MinOrderAmount = minOrderAmount.HasValue ? (long)Math.Ceiling(minOrderAmount.Value * 100) : null,
+                                MaxOrderAmount = maxOrderAmount.HasValue ? (long)Math.Ceiling(maxOrderAmount.Value * 100) : null,
+                                OrderDiscount = promo.OrderDiscount,
+                                Type = promo.Type,
+                                View = promo.View,
+                                SegmentId = promo.SegmentId,
+                                TotalCount = promo.TotalCount,
+                                GroupId = GroupId == 0 ? null : GroupId,
+                                IsUnique = promo.IsUnique,
+                                IsPromotion = is_promotion,
+                            };
+
+                        _dbApp.Promos.Add(promo_new);
+                        _dbApp.SaveChanges();
+
+                        var newPromoId = promo_new.Id;
+
+                        if (RegionId != null && RegionId.Count > 0)
+                        {
+                            foreach (var id in RegionId)
+                            {
+                                _dbApp.PromoRegions.Add(new PromoRegion
+                                    {
+                                        PromoId = newPromoId,
+                                        RegionId = id
+                                    });
+                                _dbApp.SaveChanges();
+                            }
+                        }
+
+                        if (BranchId != null && BranchId.Count > 0)
+                        {
+                            foreach (var id in BranchId)
+                            {
+                                _dbApp.PromoRestaurants.Add(new PromoRestaurant
+                                    {
+                                        PromoId = newPromoId,
+                                        RestaurantId = id
+                                    });
+                                _dbApp.SaveChanges();
+                            }
+                        }
+
+                        if (ProductIds != null && ProductIds.Count > 0)
+                        {
+                            foreach (var id in ProductIds)
+                            {
+                                _dbApp.PromoArbitrations.Add(new PromoArbitration
+                                    {
+                                        PromoId = newPromoId,
+                                        ProductId = id
+                                    });
+                                _dbApp.SaveChanges();
+                            }
+                        }
+
+                        if (IntegrationsIds != null && IntegrationsIds.Count > 0)
+                        {
+                            foreach (var id in IntegrationsIds)
+                            {
+                                _dbApp.PromoIntegrations.Add(new PromoIntegration
+                                    {
+                                        PromoId = newPromoId,
+                                        IntegrationId = id
+                                    });
+                                _dbApp.SaveChanges();
+                            }
+                        }
+
+                        if (promo.Type == PromoType.Personal)
+                        {
+                            if (phone.Count > 0)
+                            {
+                                foreach (var num in phone)
+                                {
+                                    //number = number.Trim().Replace(" ", "");
+                                    _dbApp.PromoClients.Add(new PromoClient
+                                        {
+                                            Phone = num.Number.Trim().Replace(" ", ""),
+                                            PromoId = newPromoId
+                                        });
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                            else
+                            {
+                                scope.Dispose();
+                                throw new Exception("Phone Number cannot be null");
+                            }
+                        }
+
+                        if (promo.View == PromoView.FreeProduct)
+                        {
+                            if (freeProducts.Count > 0)
+                            {
+                                foreach (var item in freeProducts)
+                                {
+                                    //number = number.Trim().Replace(" ", "");
+                                    _dbApp.PromoProducts.Add(new PromoProduct
+                                        {
+                                            ProductId = item.Id.ToString(),
+                                            Count = item.Count,
+                                            PromoId = newPromoId
+                                        });
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                            else
+                            {
+                                scope.Dispose();
+                                throw new Exception("Product cannot be null");
+                            }
+                        }
+
+                        if (promo.View == PromoView.ProductDiscount)
+                        {
+                            if (products.Count > 0)
+                            {
+                                foreach (var item in products)
+                                {
+                                    //number = number.Trim().Replace(" ", "");
+                                    _dbApp.PromoProducts.Add(new PromoProduct
+                                        {
+                                            ProductId = item.Id.ToString(),
+                                            Discount = item.Discount,
+                                            Count = item.Count,
+                                            PromoId = newPromoId
+
+                                        });
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                            else
+                            {
+                                scope.Dispose();
+                                throw new Exception("Product cannot be null");
+                            }
+                        }
+                        if (promo.View == PromoView.PromotionalProduct)
+                        {
+                            if (promotionalProducts.PromoProducts.Count > 0 && promotionalProducts.ConditionProducts.Count > 0)
+                            {
+                                foreach (var item in promotionalProducts.PromoProducts)
+                                {
+                                    //number = number.Trim().Replace(" ", "");
+                                    _dbApp.PromoProducts.Add(new PromoProduct
+                                        {
+                                            ProductId = item.Id.ToString(),
+                                            Count = item.Count,
+                                            PromoId = newPromoId
+
+                                        });
+                                    _dbApp.SaveChanges();
+                                }
+
+                                foreach (var item in promotionalProducts.ConditionProducts)
+                                {
+                                    //number = number.Trim().Replace(" ", "");
+                                    _dbApp.PromoProductFeatures.Add(new PromoProductFeature
+                                        {
+                                            ProductId = item.Id.ToString(),
+                                            Count = item.Count,
+                                            //PromoConditionType = PromoConditionType.Condition,
+                                            PromoId = newPromoId
+
+                                        });
+                                    _dbApp.SaveChanges();
+                                }
+                            }
+                            else
+                            {
+                                scope.Dispose();
+                                throw new Exception("Product cannot be null");
+                            }
+                        }
+
+                        if (promo.View == PromoView.OrderMinSumPromotion)
+                        {
+                            if (promotional_product_id != Guid.Empty)
+                            {
+                                _dbApp.PromoProducts.Add(new PromoProduct
+                                    {
+                                        ProductId = promotional_product_id.ToString(),
+                                        Count = 1,
+                                        PromoId = newPromoId
+                                    });
+                                _dbApp.SaveChanges();
+                            }
+                            else
+                            {
+                                scope.Dispose();
+                                throw new Exception("Product cannot be null");
+                            }
+                        }
+
+                        if (promo.IsUnique && promo.TotalCount.HasValue && promo.TotalCount.Value > 0)
+                        {
+                            try
+                            {
+                                var codes = CodeGenerator.GenerateUniqueCodes(promo.TotalCount.Value);
+
+                                foreach (var chunk in codes.Chunk(3000))
+                                {
+                                    var child_values = chunk.Select(c => new PromoChildValue { Name = c, PromoId = newPromoId }).ToList();
+
+                                    await _dbApp.PromoChildValues.AddRangeAsync(child_values);
+                                    await _dbApp.SaveChangesAsync();
+                                }
+                                
+                            }
+                            catch (Exception e)
+                            {
+                                _logger.LogError(e, $"PromoPage UniquePromos save error -> {e.Message}");
+                                throw new Exception();
+                            }
+                        }
+
+                        await _dbApp.SaveChangesAsync();
+
+                        scope.Complete();
+
+                        if(!is_promotion) NavigationManager.NavigateTo("/");
+                        else NavigationManager.NavigateTo("/promotions");
+                    }
+                    catch (Exception e)
+                    {
+                        scope.Dispose();
+                        _logger.LogError(e, $"PromoPage save error -> {e.Message}");
+                        NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{e.Message}", Duration = 4000 });
+
+                        //ReloadContext();
+                        is_save_disabled = false;
+                        StateHasChanged();
+                    }
+                }
+            }
+        }
+        catch (Exception e)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{e.Message}", Duration = 4000 });
+
+            //ReloadContext();
+            is_save_disabled = false;
+            StateHasChanged();
+        }
+    }
+
+    async Task HandleFileSelected(InputFileChangeEventArgs e)
+    {
+        var file = e.File;
+        if (file == null || file.ContentType != "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"Пожалуйста, выберите excel файл!", Duration = 4000 });
+            return;
+        }
+
+        using var stream = new MemoryStream();
+        await file.OpenReadStream().CopyToAsync(stream);
+        stream.Position = 0;
+
+        using (SpreadsheetDocument document = SpreadsheetDocument.Open(stream, false))
+        {
+            var workbookPart = document.WorkbookPart;
+            var sheet = workbookPart.Workbook.Descendants<Sheet>().FirstOrDefault();
+
+            var worksheetPart = (WorksheetPart)workbookPart.GetPartById(sheet.Id);
+            var rows = worksheetPart.Worksheet.Descendants<Row>();
+
+            var sharedStrings = workbookPart.SharedStringTablePart?.SharedStringTable;
+
+            foreach (var row in rows.Skip(1))
+            {
+                var cell = row.Elements<Cell>().FirstOrDefault();
+                if (cell == null) continue;
+
+                string value = cell.InnerText;
+
+                if (cell.DataType != null && cell.DataType == CellValues.SharedString && sharedStrings != null)
+                {
+                    var phone_value = sharedStrings.ElementAt(int.Parse(value)).InnerText;
+                    if (!string.IsNullOrWhiteSpace(phone_value))
+                    {
+                        phone.Add(new Phone { Number = phone_value.Trim() });
+                    }
+                }
+            }
+        }
+
+        phoneGrid.Reload();
+        StateHasChanged();
+    }
+
+    public class NewProduct
+    {
+        public Guid Id { get; set; }
+        public string Name { get; set; }
+        public int Count { get; set; }
+        public int? Discount { get; set; }
+        //public PromoConditionType PromoConditionType { get; set; }
+    }
+
+    public class PromotionalProducts
+    {
+        public List<NewProduct> ConditionProducts { get; set; } = new List<NewProduct>();
+        public List<NewProduct> PromoProducts { get; set; } = new List<NewProduct>();
+    }
+}

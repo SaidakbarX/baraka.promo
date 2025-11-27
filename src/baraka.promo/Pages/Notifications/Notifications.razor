@@ -1,0 +1,441 @@
+﻿@page "/notifications"
+
+@using Microsoft.EntityFrameworkCore;
+@using Microsoft.Extensions.Caching.Memory
+@using baraka.promo.Models;
+@using baraka.promo.Pages.TgPushSender
+@using baraka.promo.Pages.Notifications
+
+@inject IJSRuntime jsRuntime
+@inject ApplicationDbContext _dbApp
+@inject DeliveryDbContext _dbDelivery
+@inject NotificationService NotificationService
+@inject DialogService dialogService
+@inject NavigationManager NavigationManager
+@inject ILogger<Notifications> _logger
+@inject IServiceScopeFactory _factoryService
+@inject MyCacheService _cache
+
+@implements IDisposable
+
+<RadzenMenu Style="display:flex; justify-content:space-between; background-color:lightgray;" @attributes="@(new Dictionary<string, object>() { { "class", "header-menu-btn-toolbar" } })">
+    <div style="display:flex; justify-content:center; align-items:center; background-color:lightgray; padding:0px 10px; width:100%;">
+
+        <div style="flex:1; display:flex; justify-content:start; flex-direction:row; align-items:center;">
+            <span class="header-text">Уведомления</span>
+            <RadzenMenuItemEx Icon="note_add" Click="@Add" Text="Добавить"></RadzenMenuItemEx>
+            @if (selectedItems != null && selectedItems.Count > 0)
+            {
+                <RadzenMenuItemEx Icon="edit" Text="Редактировать" Click="@(args => { Edit(selectedItems[0]); })"></RadzenMenuItemEx>
+
+                <RadzenMenuItemEx Icon="delete" Text="Удалить"
+                                  Click="@(args => confirm.Show("Подтверждать", "Подтвердите удаление", selectedItems[0]))"></RadzenMenuItemEx>
+            }
+
+        </div>
+        <div style="flex:1; display:flex; justify-content:end; column-gap: 10px; align-items: center;">
+            <RadzenLabel>Архив</RadzenLabel>
+            <RadzenSwitch @bind-Value="@archieve" Change=@(args => OnChange(args)) />
+
+        </div>
+    </div>
+</RadzenMenu>
+
+<RadzenDataGrid @ref="grid" Count="@TotalCount" Data="@messageModels"
+                AllowSorting="false"
+                TItem="MessageModel"
+                RowSelect="RowChanged"
+                @bind-Value=selectedItems
+                SelectionMode="DataGridSelectionMode.Single"
+                AllowFiltering="false" AllowPaging="true" PageSize="50" Style="height:calc(100vh - 150px)">
+    <Columns>
+        <RadzenDataGridColumn TItem="MessageModel" Property="MessageUz" Title="Текст UZ" Width="200px" />
+        <RadzenDataGridColumn TItem="MessageModel" Property="MessageRu" Title="Текст RU" Width="200px" />
+        <RadzenDataGridColumn TItem="MessageModel" Property="MessageEn" Title="Текст EN" Width="200px" />
+        <RadzenDataGridColumn TItem="MessageModel" Property="MessageKz" Title="Текст KZ" Width="200px" />
+        <RadzenDataGridColumn TItem="MessageModel" Property="StartDate" Title="Дата начала" FormatString="{0:dd.MM.yyyy}" />
+        <RadzenDataGridColumn TItem="MessageModel" Title="Режим работы">
+            <Template Context="data">
+                @data.WorkingTimeFrom.ToString("HH:mm") - @data.WorkingTimeTo.ToString("HH:mm")
+            </Template>
+        </RadzenDataGridColumn>
+        @* <RadzenDataGridColumn TItem="MessageModel" Property="Status" Title="Статус">
+        <Template Context="data">
+        @GetStatusTranslation(data.Status)
+        </Template>
+        </RadzenDataGridColumn>*@
+        <RadzenDataGridColumn TItem="MessageModel" Property="SendedUserCount" Title="Ко-во отправленных" />
+        @* <RadzenDataGridColumn TItem="MessageModel" Property="ErrorUserCount" Title="Ко-во ошибoк" /> *@
+        <RadzenDataGridColumn TItem="MessageModel" Property="NotSendedUserCount" Title="Ко-во не отправленных" />
+        @* <RadzenDataGridColumn TItem="MessageModel" Property="LastSuccessMessageSendTime" Title="Успешный" FormatString="{0:dd.MM.yyyy HH:mm}">
+            <Template Context="message">
+                @if (message.LastSuccessMessageSendTime != DateTime.MinValue)
+                {
+                    @message.LastSuccessMessageSendTime.ToString("dd.MM.yyyy HH:mm")
+                }
+                else
+                {
+                }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="MessageModel" Property="LastErrorMessageSendTime" Title="Не успешный" FormatString="{0:dd.MM.yyyy HH:mm}">
+            <Template Context="message">
+                @if (message.LastErrorMessageSendTime != DateTime.MinValue)
+                {
+                    @message.LastErrorMessageSendTime.ToString("dd.MM.yyyy HH:mm")
+                }
+                else
+                {
+                }
+            </Template>
+        </RadzenDataGridColumn> *@
+        <RadzenDataGridColumn TItem="MessageModel" Property="StartTime" Title="Время начала">
+            <Template Context="message">
+                @if (message.StartTime != DateTime.MinValue)
+                {
+                    @message.StartTime.ToString("dd.MM.yyyy HH:mm")
+                }
+                else
+                {
+                }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="MessageModel" Property="StopTime" Title="Время паузы">
+            <Template Context="message">
+                @if (message.StopTime != DateTime.MinValue)
+                {
+                    @message.StopTime.ToString("dd.MM.yyyy HH:mm")
+                }
+                else
+                {
+                }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="MessageModel">
+            <Template Context="data">
+                @{
+                    if (data.StartDate > DateTime.Now)
+                    {
+                        <RadzenButton Icon="hourglass_top" title="В ожидании даты начало" ButtonStyle="ButtonStyle.Warning" />
+                    }
+                    else if (data.Status == MessageHeaderStatus.Start)
+                    {
+                        string title = "Запушен";
+                        if (data.WorkingTimeFrom.TimeOfDay <= DateTime.Now.TimeOfDay && data.WorkingTimeTo.TimeOfDay >= DateTime.Now.TimeOfDay)
+                        {
+                            title = "В ожидании (Режим работы)";
+                        }
+
+                        <RadzenButton Icon="pause_circle_outline" title="@title" ButtonStyle="ButtonStyle.Success" Click="@(args => confirmStatus.Show("Статус", "Изменить статус", data))" />
+                    }
+                    else if (data.Status == MessageHeaderStatus.Paused)
+                    {
+                        <RadzenButton Icon="not_started" title="В ожидании" ButtonStyle="ButtonStyle.Primary" Click="@(args => confirmStatus.Show("Статус", "Изменить статус", data))" />
+
+                    }
+                    else if (data.Status == MessageHeaderStatus.Completed)
+                    {
+                        <RadzenButton Icon="mark_chat_read" title="Выполнен" ButtonStyle="ButtonStyle.Success" />
+
+                    }
+                }
+            </Template>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+<Confirm TItem="MessageModel" @ref="confirm" OnConfirm="@OnConfirmDelete" />
+<Confirm TItem="MessageModel" @ref="confirmStatus" OnConfirm="@OnConfirmStatus" />
+
+
+@code {
+
+    [CascadingParameter]
+    public Task<AuthenticationState>? AuthTask { get; set; }
+
+    Confirm<MessageModel>? confirm, confirmStatus;
+    RadzenDataGrid<MessageModel>? grid = new RadzenDataGrid<MessageModel>();
+    int TotalCount;
+    List<MessageModel> messageModels = new List<MessageModel>();
+    //MessageModel selectedItem;
+    IList<MessageModel> selectedItems = new List<MessageModel>();
+
+    bool archieve;
+
+    protected override async void OnInitialized()
+    {
+        var data = await _cache.GetFromCache<List<MessageModel>>("NotifysDataKey");
+        if (data != null)
+        {
+            TotalCount = data?.Count() ?? 0;
+            messageModels = data;
+            StateHasChanged();
+        }
+        else
+        {
+            await LoadData();
+        }
+    }
+
+    async void OnChange(bool value)
+    {
+        archieve = value;
+        await LoadData();
+    }
+
+    private async Task OnConfirmStatus(MessageModel obj)
+    {
+        if (obj != null)
+        {
+            ChangeStatus(obj);
+        }
+    }
+
+    async void ChangeStatus(MessageModel model)
+    {
+        if (model.Status == MessageHeaderStatus.Start)
+        {
+            var mh = await _dbApp.NotificationHeaders.FirstOrDefaultAsync(a => a.Id == model.Id);
+
+            mh.Status = MessageHeaderStatus.Paused;
+            var timeData = new NotificationTime
+                {
+                    Id = Guid.NewGuid(),
+                    NotificationHeaderId = mh.Id,
+                    StopTime = DateTime.Now,
+                    UserName = AuthTask?.Result.User.Identity?.Name
+                };
+
+            await _dbApp.NotificationTimes.AddAsync(timeData);
+            await _dbApp.SaveChangesAsync();
+        }
+        else if (model.Status == MessageHeaderStatus.Paused)
+        {
+            var mhs = await _dbApp.NotificationHeaders.Where(a => a.Status == MessageHeaderStatus.Start).ToListAsync();
+
+            if (mhs.Count > 0)
+            {
+                foreach (var item in mhs)
+                {
+                    item.Status = MessageHeaderStatus.Paused;
+
+                    var timeData = new NotificationTime
+                        {
+                            Id = Guid.NewGuid(),
+                            NotificationHeaderId = item.Id,
+                            StopTime = DateTime.Now,
+                            UserName = AuthTask?.Result.User.Identity?.Name
+                        };
+
+                    await _dbApp.NotificationTimes.AddAsync(timeData);
+                }
+                await _dbApp.SaveChangesAsync();
+            }
+            var mh = await _dbApp.NotificationHeaders.FirstOrDefaultAsync(a => a.Id == model.Id);
+            if (mh != null)
+            {
+                mh.Status = MessageHeaderStatus.Start;
+
+                var time = new NotificationTime
+                    {
+                        Id = Guid.NewGuid(),
+                        NotificationHeaderId = mh.Id,
+                        StartTime = DateTime.Now,
+                        UserName = AuthTask?.Result.User.Identity?.Name
+                    };
+                await _dbApp.NotificationTimes.AddAsync(time);
+
+                await _dbApp.SaveChangesAsync();
+            }
+        }
+    }
+
+    void Add()
+    {
+        NavigationManager.NavigateTo("/push_sender");
+    }
+
+    void ItemClose(dynamic result)
+    {
+        dialogService.OnClose -= ItemClose;
+        if (result != null)
+        {
+            grid.Reload();
+        }
+        StateHasChanged();
+    }
+
+    void Edit(MessageModel model)
+    {
+        dialogService.OnClose += ItemClose;
+        dialogService.Open<EditNotification>("Edit",
+            new Dictionary<string, object>() { { "Model", Newtonsoft.Json.JsonConvert.SerializeObject(model) } },
+            new DialogOptions() { Width = "600px", Height = "420px" });
+        StateHasChanged();
+        grid.Reload();
+    }
+
+    private async Task OnConfirmDelete(MessageModel obj)
+    {
+        if (obj != null)
+        {
+            var mh = _dbApp.NotificationHeaders.Where(a => a.Id == obj.Id).FirstOrDefault();
+
+            mh.IsDeleted = true;
+            await _dbApp.SaveChangesAsync();
+
+            _logger.Log(LogLevel.Information, AuthTask?.Result.User.Identity?.Name);
+
+            selectedItems = new List<MessageModel>();
+        }
+        await grid.Reload();
+    }
+
+    public class MessageModel
+    {
+        public Guid Id { get; set; }
+        public string? MessageUz { get; set; }
+        public string? MessageRu { get; set; }
+        public string? MessageEn { get; set; }
+        public string? MessageKz { get; set; }
+        public DateTime WorkingTimeFrom { get; set; }
+        public DateTime WorkingTimeTo { get; set; }
+        public MessageHeaderStatus Status { get; set; }
+        public int SendedUserCount { get; set; }
+        public int ErrorUserCount { get; set; }
+        public int NotSendedUserCount { get; set; }
+        public DateTime StartDate { get; set; }
+        public DateTime CreateTime { get; set; }
+        public DateTime StartTime { get; set; }
+        public DateTime StopTime { get; set; }
+        public DateTime LastSuccessMessageSendTime { get; set; }
+        public DateTime LastErrorMessageSendTime { get; set; }
+
+        public string? WorkingTime
+        {
+            get
+            {
+                if (WorkingTimeFrom > DateTime.MinValue && WorkingTimeTo > DateTime.MinValue)
+                {
+                    return $"{WorkingTimeFrom:HH:mm} - {WorkingTimeTo:HH:mm}";
+                }
+                return null;
+            }
+        }
+    }
+    string GetStatusTranslation(MessageHeaderStatus status)
+    {
+        switch (status)
+        {
+            case MessageHeaderStatus.New:
+                return "Начало";
+            case MessageHeaderStatus.Start:
+                return "Начало";
+            case MessageHeaderStatus.Paused:
+                return "Приостановлено";
+            case MessageHeaderStatus.Completed:
+                return "Завершено";
+            default:
+                return status.ToString(); // Return the enum name if no translation is found
+        }
+    }
+    async Task RowChanged(MessageModel message)
+    {
+        //selectedItem = message;
+        //selectedItems = new List<MessageModel> { selectedItem };
+        //StateHasChanged();
+        //await LoadData();
+    }
+    private async Task LoadData()
+    {
+        var selectitem = selectedItems?.Count > 0 ? selectedItems[0] : null;
+        using var scope = _factoryService.CreateScope();
+        var _db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+
+        var notifications = _db.NotificationHeaders.Where(w => !w.IsDeleted).Select(s => new MessageModel
+            {
+                Id = s.Id,
+                MessageUz = s.MessageUz,
+                MessageEn = s.MessageEn,
+                MessageKz = s.MessageKz,
+                MessageRu = s.MessageRu,
+                CreateTime = s.CreatedTime,
+                WorkingTimeFrom = s.WorkingTimeFrom,
+                WorkingTimeTo = s.WorkingTimeTo,
+                Status = s.Status,
+                StartDate = s.StartDate,
+            }).ToList();
+
+        var infos = _db.Notifications.GroupBy(g => new { g.NotificationHeaderId, g.Status }).Select(s => new
+        {
+            HeaderId = s.Key.NotificationHeaderId,
+            Status = s.Key.Status,
+            Count = s.Count(),
+            LastTime = s.Max(s => s.SendTime)
+        }).ToList();
+
+        var times = _db.NotificationTimes.GroupBy(a => a.NotificationHeaderId).Select(s => new
+        {
+            MessageHeaderId = s.Key,
+            StartTime = s.Max(a => a.StartTime),
+            StopTime = s.Max(a => a.StopTime)
+        }).ToList();
+
+        foreach (var item in notifications)
+        {
+            var time = times.FirstOrDefault(a => a.MessageHeaderId == item.Id);
+            if (time != null)
+            {
+                item.StartTime = time.StartTime;
+                item.StopTime = time.StopTime;
+            }
+
+            var statusItem = infos.FirstOrDefault(f => f.HeaderId == item.Id && f.Status == Models.TgMessageModel.Status.Sended);
+            if (statusItem != null)
+            {
+                item.SendedUserCount = statusItem.Count;
+                item.LastSuccessMessageSendTime = statusItem.LastTime;
+            }
+
+            statusItem = infos.FirstOrDefault(f => f.HeaderId == item.Id && f.Status == Models.TgMessageModel.Status.Error);
+            if (statusItem != null)
+            {
+                item.ErrorUserCount = statusItem.Count;
+                item.LastErrorMessageSendTime = statusItem.LastTime;
+            }
+
+            statusItem = infos.FirstOrDefault(f => f.HeaderId == item.Id && f.Status == Models.TgMessageModel.Status.New);
+            if (statusItem != null)
+                item.NotSendedUserCount = statusItem.Count;
+
+        }
+
+        if (archieve)
+        {
+            messageModels = notifications.Where(a => a.Status == MessageHeaderStatus.Completed).OrderBy(a => a.CreateTime).ToList();
+        }
+        else
+        {
+            messageModels = notifications.Where(a => a.Status == MessageHeaderStatus.Start || a.Status == MessageHeaderStatus.Paused || a.Status == MessageHeaderStatus.New).OrderBy(a => a.CreateTime).ToList();
+        }
+        TotalCount = messageModels?.Count() ?? 0;
+        if (selectitem != null)
+        {
+            selectedItems?.Add(selectitem);
+            await InvokeAsync(() => StateHasChanged());
+        }
+        await InvokeAsync(() => StateHasChanged());
+
+        _cache.SetCache("NotifysDataKey", messageModels);
+
+        if (!isDisposed)
+        {
+            await Task.Delay(10000);
+            await Task.Run(LoadData);
+        }
+    }
+    bool isDisposed = false;
+    public void Dispose()
+    {
+        isDisposed = true;
+    }
+}

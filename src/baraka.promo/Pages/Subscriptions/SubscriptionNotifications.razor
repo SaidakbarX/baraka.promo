@@ -1,0 +1,225 @@
+﻿@page "/subscription_notifications"
+
+@using Microsoft.EntityFrameworkCore
+@using baraka.promo.Data.Subscriptions
+@using baraka.promo.Models.Enums
+@using baraka.promo.Utils
+
+@inject ApplicationDbContext Db
+@inject NotificationService Notify
+@inject NavigationManager Nav
+@inject ILogger<SubscriptionNotifications> Logger
+@inject DialogService dialogService
+
+<PageTitle>Subscription Notifications</PageTitle>
+
+<RadzenMenu Style="display:flex; justify-content:space-between; background-color:lightgray;">
+    <div style="flex:1; display:flex; align-items:center;">
+        <span class="header-text">Инап </span>
+        <RadzenMenuItemEx Icon="note_add" Text="Добавить" Click="@AddNotification"></RadzenMenuItemEx>
+
+        @if (selectedItems != null && selectedItems.Any())
+        {
+            <RadzenMenuItemEx Icon="edit" Text="Редактировать" Click="@(() => EditNotification(selectedItems.First()))"></RadzenMenuItemEx>
+            <RadzenMenuItemEx Icon="delete" Text="Удалить" Click="@(() => ConfirmDelete(selectedItems.First()))"></RadzenMenuItemEx>
+        }
+    </div>
+</RadzenMenu>
+
+<RadzenDataGrid @ref="grid"
+                Data="@notifications"
+                TItem="NotificationModel"
+                AllowPaging="true"
+                AllowSorting="true"
+                SelectionMode="DataGridSelectionMode.Single"
+                @bind-Value="@selectedItems"
+                RowDoubleClick="@OnRowDoubleClick"
+                PageSize="30"
+                Style="height:calc(100vh - 150px)">
+    
+
+    <Columns>
+        <RadzenDataGridColumn TItem="NotificationModel" Property="NotificationTitleRu" Title="Название" Width="200px" />
+
+        <RadzenDataGridColumn TItem="NotificationModel" Property="NotificationType" Title="Тип" Width="150px">
+            <Template Context="data">
+                @(EnumHelper<InapType>.EnumToString(data.NotificationType))
+            </Template>
+        </RadzenDataGridColumn>
+
+
+        <RadzenDataGridColumn TItem="NotificationModel" Property="IsNotificationActive" Title="Статус" Width="120px">
+            <Template Context="data">
+                @if (data.IsNotificationActive)
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Активно" />
+                }
+                else
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="Неактивно" />
+                }
+            </Template>
+        </RadzenDataGridColumn>
+
+        <RadzenDataGridColumn TItem="NotificationModel" Property="CreatedTime" Title="Создано"
+                              FormatString="{0:dd.MM.yyyy HH:mm}" Width="150px" />
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    RadzenDataGrid<NotificationModel>? grid;
+    List<NotificationModel> notifications = new();
+    IList<NotificationModel> selectedItems = new List<NotificationModel>();
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadNotifications();
+    }
+
+    private async Task LoadNotifications()
+    {
+        try
+        {
+            var subscriptions = await Db.Subscriptions
+                .Where(s => !s.IsDeleted && s.InapType != InapType.None)
+                .OrderByDescending(s => s.CreatedTime)
+                .Select(s => new NotificationModel
+                {
+                    Id = s.Id,
+                    NotificationType = s.InapType,
+                    NotificationTitleUz = s.NameUz,
+                    NotificationTitleRu = s.NameRu,
+                    NotificationTitleEn = s.NameEn,
+                    NotificationDescriptionUz = s.Content_Uz,
+                    NotificationDescriptionRu = s.Content_Ru,
+                    NotificationDescriptionEn = s.Content_En,
+                    NotificationImageUrlUz = s.ImageUrlUz,
+                    NotificationImageUrlRu = s.ImageUrlRu,
+                    NotificationImageUrlEn = s.ImageUrlEn,
+                    IsNotificationActive = s.IsActive,
+                    NotificationReferenceId = s.ProductId,
+                    CreatedTime = s.CreatedTime
+                })
+                .ToListAsync();
+
+            foreach (var notification in subscriptions)
+            {
+                if (!string.IsNullOrWhiteSpace(notification.NotificationReferenceId))
+                {
+                    switch (notification.NotificationType)
+                    {
+                        case InapType.Category:
+                            if (int.TryParse(notification.NotificationReferenceId, out var groupId))
+                            {
+                                var group = await Db.PromoGroups.FindAsync(groupId);
+                                notification.ReferenceInfo = group?.Name ?? "N/A";
+                            }
+                            else
+                            {
+                                notification.ReferenceInfo = "N/A";
+                            }
+                            break;
+
+                        case InapType.Product:
+                            notification.ReferenceInfo = notification.NotificationReferenceId;
+                            break;
+
+                        default:
+                            notification.ReferenceInfo = notification.NotificationReferenceId;
+                            break;
+                    }
+                }
+                else
+                {
+                    notification.ReferenceInfo = "-";
+                }
+            }
+
+            notifications = subscriptions;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Ошибка загрузки уведомлений");
+            Notify.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Ошибка",
+                Detail = ex.Message
+            });
+        }
+    }
+
+    void AddNotification() => Nav.NavigateTo("/add_subscription_notification");
+
+    void EditNotification(NotificationModel notification)
+    {
+        Nav.NavigateTo($"/edit_subscription_notification/{notification.Id}");
+    }
+
+    private async Task OnRowDoubleClick(DataGridRowMouseEventArgs<NotificationModel> args)
+    {
+        EditNotification(args.Data);
+    }
+
+    private async Task ConfirmDelete(NotificationModel notification)
+    {
+        var result = await dialogService.Confirm("Удалить это уведомление?", "Подтверждение",
+            new ConfirmOptions { OkButtonText = "Да", CancelButtonText = "Нет" });
+        if (result == true)
+        {
+            await DeleteNotification(notification);
+        }
+    }
+
+    private async Task DeleteNotification(NotificationModel notification)
+    {
+        try
+        {
+            var entity = await Db.Subscriptions.FindAsync(notification.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true;
+                Db.Subscriptions.Update(entity);
+                await Db.SaveChangesAsync();
+                await LoadNotifications();
+
+                 Notify.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Удалено",
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Ошибка удаления уведомления");
+            Notify.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Ошибка",
+                Detail = ex.Message
+            });
+        }
+    }
+
+    public class NotificationModel
+    {
+        public long Id { get; set; }
+        public InapType NotificationType { get; set; }
+        public string? NotificationTitleUz { get; set; }
+        public string? NotificationTitleRu { get; set; }
+        public string? NotificationTitleEn { get; set; }
+        public string? NotificationDescriptionUz { get; set; }
+        public string? NotificationDescriptionRu { get; set; }
+        public string? NotificationDescriptionEn { get; set; }
+        public string? NotificationImageUrlUz { get; set; }
+        public string? NotificationImageUrlRu { get; set; }
+        public string? NotificationImageUrlEn { get; set; }
+        public bool IsNotificationActive { get; set; }
+        public int NotificationDisplayOrder { get; set; }
+        public string? NotificationReferenceId { get; set; }
+        public string? ReferenceInfo { get; set; }
+        public DateTime CreatedTime { get; set; }
+    }
+}

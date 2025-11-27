@@ -1,0 +1,43 @@
+﻿@using Microsoft.EntityFrameworkCore;
+
+@inject DialogService dialogService
+@inject DeliveryDbContext _dbDelivery
+
+<div class="row">
+    <label class="col-12">Акционное блюда</label>
+    <div class="col-12">
+        <RadzenDropDownDataGrid @ref="grid" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                                AllowClear="true" @bind-Value=@productId Placeholder="Выберите блюда" Data=@Products
+                                TextProperty="Name_Ru" AllowFilteringByAllStringColumns="true" ValueProperty="Id" class="w-100">
+            <Columns>
+                <RadzenDropDownDataGridColumn Property="Category.Name_Ru" Title="Категория" />
+                <RadzenDropDownDataGridColumn Property="Name_Ru" Title="Блюда" />
+            </Columns>
+        </RadzenDropDownDataGrid>
+    </div>
+</div>
+<div class="row">
+    <label class="col-12">Количество</label>
+    <div class="col-12">
+        <RadzenNumeric @bind-Value="@productCount" Min="1" class="w-100" />
+    </div>
+</div>
+<div class="row float-right mt-3">
+    <div class="col-12">
+        <div class="float-end">
+            <RadzenButton Click="@(args => dialogService.Close(new {productId,productCount}))" Text="Добавить" Style="width: 150px" />
+            <RadzenButton Click="@(args => dialogService.Close())" ButtonStyle="ButtonStyle.Light" Text="Отменить" Style="width: 150px" />
+        </div>
+    </div>
+</div>
+
+@code {
+    List<Product> Products;
+    Guid productId;
+    int productCount = 1;
+    RadzenDropDownDataGrid<Guid> grid;
+    protected override void OnInitialized()
+    {
+        Products = _dbDelivery.Products.Include(a => a.Category).ToList();
+    }
+}

@@ -1,0 +1,179 @@
+﻿@page "/integrations"
+
+@attribute [Authorize]
+
+@inject ApplicationDbContext _db
+@inject NotificationService _notify_service
+@inject ILogger<IntegrationList> _logger
+@inject IJSRuntime _js_runtime
+
+<RadzenMenu Style="display:flex; justify-content:space-between; background-color:lightgray;" @attributes="@(new Dictionary<string, object>() { { "class", "header-menu-btn-toolbar" } })">
+    <div style="display:flex; justify-content:center; align-items:center; background-color:lightgray; padding-left:10px;">
+
+        <RadzenMenuItemEx Icon="add_circle" Click="OpenModal" Text="Добавить"></RadzenMenuItemEx>
+        @if (integration != null)
+        {
+            <RadzenMenuItemEx Icon="edit" Click="OnEditOpen" Text="Редактировать"></RadzenMenuItemEx>
+            <RadzenMenuItemEx Icon="delete" Text="Удалить" Click="@(args => confirm.Show("Подтверждение", "Вы действительно хотите удалить эту запись?", integration))"></RadzenMenuItemEx>
+        }
+        
+    </div>
+
+</RadzenMenu>
+
+<RadzenGrid @ref=grid Count="integrations.Count" Data="integrations" AllowSorting="false" TItem="Integration"
+            AllowFiltering="false" AllowPaging="true" PageSize="50" Style="height:calc(100vh - 150px)"
+            RowSelect="@(args => integration = args)" RowDoubleClick="@(args =>{ OnEditOpen(); })"
+            >
+    <Columns>
+        <RadzenGridColumn TItem="Integration" Property="Name" Title="Название" />
+        <RadzenGridColumn TItem="Integration" Title="API-ключ">
+            <Template Context="data">
+                <span>@MaskApiKey(data.SecretKey)</span>
+                <RadzenButton ButtonType="ButtonType.Button" Size="ButtonSize.Medium" Icon="flip_to_front" IconColor="black"
+                              Style="background-color:transparent; margin-top: -10px;" Click="()=>CopyToClipboard(data.SecretKey)" />
+            </Template>
+        </RadzenGridColumn>
+    </Columns>
+</RadzenGrid>
+
+<ModalDialog @ref="partnerDialog" Title="Интеграция" OnCloseClick="CloseModal" Model="integration" >
+    <BodyContent>
+        <RadzenTemplateForm TItem="Integration">
+            <div class="d-flex mt-3">
+                <label class="mt-1" style="width: 20%;">Название:</label>
+                <div style="width: 80%;">
+                    <RadzenTextBox @bind-Value=integration.Name style="width: 80%;" />
+                </div>
+            </div>
+            <div class="d-flex mt-3">
+                <label style="width: 20%;">API-ключ:</label>
+                <span style="width: 48%;">@new_secret_key</span>
+                <RadzenButton ButtonType="ButtonType.Button" Size="ButtonSize.Large" Icon="flip_to_front" IconColor="blue"
+                              Style="width: 10%; background-color:white; margin-top: -10px;" Click="()=>CopyToClipboard(new_api_key)" />
+                <RadzenButton ButtonType="ButtonType.Button" Size="ButtonSize.Large" Icon="autorenew" IconColor="blue"
+                              Style="width: 15%; background-color:white; margin-top: -10px" Click="GenerateNewKey" />
+            </div>
+            <div class="row text-center mt-5">
+                <div class="justify-content-between">
+                    <RadzenButton ButtonType="ButtonType.Button" Click="OnSave" Text=Сохранить Style="width: 150px;" />
+                    <RadzenButton ButtonType="ButtonType.Button" Click="CloseModal" ButtonStyle="ButtonStyle.Secondary" Text=Закрыть Style="width: 150px" />
+                </div>
+            </div>
+        </RadzenTemplateForm>
+    </BodyContent>
+</ModalDialog>
+
+<Confirm TItem="Integration" @ref="confirm" OnConfirm="@OnConfirmDelete" />
+
+@code {
+
+    List<Integration> integrations = new();
+    Integration integration;
+    Confirm<Integration> confirm;
+    ModalDialog partnerDialog;
+    string new_secret_key;
+    RadzenGrid<Integration> grid;
+    string new_api_key;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await LoadData();
+
+        await Task.CompletedTask;
+    }
+
+    async Task LoadData()
+    {
+        integrations = _db.Integrations.Where(x => x.IsActive).ToList();
+    }
+
+    string MaskApiKey(string key, int visibleStart = 3, int visibleEnd = 3)
+    {
+        if (string.IsNullOrEmpty(key) || key.Length <= visibleStart + visibleEnd) return key;
+
+        int maskLength = key.Length - (visibleStart + visibleEnd);
+        return key.Substring(0, visibleStart) + new string('*', maskLength) + key[^visibleEnd..];
+    }
+
+    async Task CopyToClipboard(string api_key)
+    {
+        await _js_runtime.InvokeVoidAsync("copyTextToClipboard", api_key);
+    }
+
+    async Task OnConfirmDelete(Integration obj)
+    {
+        try
+        {
+            obj.IsActive = false;
+            _db.SaveChanges();
+
+            await LoadData();
+            //await grid.Reload();
+            integration = null;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, ex.Message);
+            _notify_service.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Detail = $"{ex.Message}", Duration = 4000 });
+        }
+    }
+
+    async Task OnSave()
+    {
+        try
+        {
+            if (!string.IsNullOrEmpty(integration.Name))
+            {
+                if(integration.Id == 0)
+                {
+                    integration.IsActive = true;
+                    _db.Integrations.Add(integration);
+                }
+
+                integration.SecretKey = new_api_key;
+                _db.SaveChanges();
+
+                await LoadData();
+                partnerDialog.Close();
+                integration = null;
+                await grid.Reload();
+                StateHasChanged();
+            }
+            else _notify_service.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Detail = $"Заполните название!", Duration = 4000 });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, ex.Message);
+            _notify_service.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Detail = $"{ex.Message}", Duration = 4000 });
+        }
+    }
+
+    void CloseModal()
+    {
+        partnerDialog.Close();
+        //integration = null;
+    }
+
+    void OpenModal()
+    {
+        integration = new();
+        new_api_key = Guid.NewGuid().ToString().Replace("-", "");
+        new_secret_key = MaskApiKey(new_api_key);
+        partnerDialog.Show();
+    }
+
+    void GenerateNewKey()
+    {
+        new_api_key = Guid.NewGuid().ToString().Replace("-", "");
+        new_secret_key = MaskApiKey(new_api_key);
+    }
+
+    void OnEditOpen()
+    {
+        new_secret_key = MaskApiKey(integration.SecretKey);
+        new_api_key = integration.SecretKey;
+        partnerDialog.Show();
+    }
+}

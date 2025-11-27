@@ -1,0 +1,277 @@
+﻿@page "/"
+@page "/promotions"
+
+@attribute [Authorize]
+
+@using System.Transactions;
+@using Microsoft.EntityFrameworkCore;
+@using baraka.promo.Models;
+@using baraka.promo.Pages.PromoListPage.Gruoped
+@using baraka.promo.Pages.Promos
+@using baraka.promo.Pages.Promos.PromoListPage
+@using baraka.promo.Pages.Users
+@using baraka.promo.Shared.NewFolder
+@using baraka.promo.Pages.PromoListPage.List
+
+@inherits BaseRazorComponent
+@inject NavigationManager NavigationManager
+@inject DialogService dialogService
+@inject NotificationService NotificationService
+@inject IServiceProvider ServiceProvider
+
+<div style="display:flex; justify-content:space-between; align-items:center; background-color:lightgray; padding:4px 10px; width:100%;">
+
+    <div style="display:flex;  gap:10px; width:100%;">
+        
+            @if(!is_promotion)
+            {
+            <span class="header-text" style="display:flex; justify-content:center; align-items:center;">Промоакции</span>
+            }
+        else
+        {
+            <span class="header-text" style="display:flex; justify-content:center; align-items:center;">Акции</span>
+        }
+
+        <MyMenuItem Icon="note_add" Click="@Add" Text="Добавить"></MyMenuItem>
+        @if (selectedItem != null)
+        {
+            <MyMenuItem Icon="edit" Text="Редактировать" Click="@(args => { Edit(selectedItem); })"></MyMenuItem>
+
+            <MyMenuItem Icon="delete" Text="Удалить"
+                        Click="@(args => confirm.Show("Подтверждать", "Подтвердите удаление", selectedItem))"></MyMenuItem>
+        }
+
+        <div style="flex:1; display:flex; justify-content:end; column-gap: 10px; align-items: center; padding-right: 10px;">
+
+
+            <RadzenLabel>Архив</RadzenLabel>
+            <RadzenSwitch @bind-Value="@archieve" Change=@(args => OnArchieveChange(args)) />
+            <RadzenLabel>Механика</RadzenLabel>
+            <RadzenDropDown Multiple="true" @bind-Value="@SelectedMachanicTypes" Data="@MachanicTypes" Change="LoadData" />
+
+            <RadzenLabel>Аудитория</RadzenLabel>
+            <RadzenDropDown Multiple="true" @bind-Value="@SelectedAuditoryTypes" Data="@AuditoryTypes" Change="LoadData" />
+
+            <RadzenTextBox @bind-Value="@searchTextValue" Placeholder="Поиск текста"></RadzenTextBox>
+
+            <RadzenButton Click="LoadData" Text="Поиск"></RadzenButton>
+        </div>
+    </div>
+</div>
+
+
+<div style="display:flex; justify-content:space-between; width:100%;">
+    <RadzenTabs Change="TabChanged" SelectedIndex="@selectedTab" RenderMode="TabRenderMode.Client">
+        <Tabs>
+
+            <RadzenTabsItem Text="Сгруппированное" Style="padding:0px;">
+                <PromoListGroupped @ref="PromoGroup"
+                                   SelectionChanged="RowSelect" 
+                                   IsArchive="@archieve" IsPromotions="@is_promotion"
+                                   SelectedAuditoryTypes="@SelectedAuditoryTypes"
+                                   SelectedMachanicTypes="@SelectedMachanicTypes" />
+
+            </RadzenTabsItem>
+
+            <RadzenTabsItem Text="Список" Style="padding:0px;">
+
+                <PromoListTable @ref="groupedPromoList" IsArchive="@archieve" IsPromotions="@is_promotion"
+                                  SelectionChanged="RowSelect"
+                                  searchTextValue="@searchTextValue"
+                                  SelectedAuditoryTypes="@SelectedAuditoryTypes"
+                                  SelectedMachanicTypes="@SelectedMachanicTypes" />
+
+             
+            </RadzenTabsItem>
+
+        </Tabs>
+    </RadzenTabs>
+
+
+</div>
+
+
+
+<Confirm TItem="PromoModel" @ref="confirm" OnConfirm="@OnConfirmDelete" />
+
+@code {
+    int selectedTab = 0;
+    int activeTab = 0;
+
+    ApplicationDbContext _dbApp;
+
+    RadzenGrid<PromoModel>? grid;
+    Confirm<PromoModel>? confirm;
+    PromoListGroupped? PromoGroup;
+    PromoListTable? groupedPromoList;
+    List<PromoModel> Listpromo = new List<PromoModel>();
+
+    int TotalCount;
+    PromoModel selectedItem;
+    bool archieve = false;
+
+    bool is_promotion;
+
+    List<string> MachanicTypes = new();
+    List<string> AuditoryTypes = new();
+
+    List<string> SelectedMachanicTypes = new();
+    List<string> SelectedAuditoryTypes = new();
+
+    protected override async void OnInitialized()
+    {
+        ReloadContext();
+
+        _pageSize = 5;
+        MachanicTypes = EnumHelper<PromoView>.GetEnumDescriptions();
+        AuditoryTypes = EnumHelper<PromoType>.GetEnumDescriptions();       
+
+        NavigationManager.LocationChanged += OnLocationChanged;
+        UpdateRoute();
+
+        //await LoadData();
+    }
+
+    // protected override async Task OnParametersSetAsync()
+    // {
+    //     //check promo or promotion
+    //     var uri = NavigationManager.ToAbsoluteUri(NavigationManager.Uri);
+    //     is_promotion = uri.AbsolutePath.ToLower().Contains("promotions");
+
+    //     await Task.CompletedTask;
+    // }
+
+    private void OnLocationChanged(object sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        UpdateRoute();
+        StateHasChanged(); // Обновляем UI
+    }
+
+    private void UpdateRoute()
+    {
+        var path = NavigationManager.ToAbsoluteUri(NavigationManager.Uri).AbsolutePath.ToLower();
+
+        is_promotion = path switch
+        {
+            "/" => false,
+            "/promotions" => true,
+            _ => false
+        };
+        LoadData();
+    }
+
+    void ReloadContext()
+    {
+        _dbApp = ServiceProvider.GetRequiredService<ApplicationDbContext>();
+    }
+
+    public void RowSelect(PromoModel seletedPromo)
+    {
+        selectedItem = seletedPromo;
+    }
+
+    void OnArchieveChange(bool args)
+    {
+        archieve = args;
+        if (selectedTab == 0)
+        {
+            if (PromoGroup != null)
+                PromoGroup.Load(args);
+
+        }
+        else if (selectedTab == 2)
+        {
+            Reload();
+        }
+        else
+        {
+            Reload();
+        }
+    }
+
+    private async Task OnConfirmDelete(PromoModel obj)
+    {
+        try
+        {
+            var promo = _dbApp.Promos.FirstOrDefault(a => a.Id == obj.Id);
+            if (promo != null)
+            {
+                promo.IsDeleted = true;
+                await _dbApp.SaveChangesAsync();
+            }
+
+            selectedItem = null;
+
+        }
+        catch (Exception e)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{e.Message}", Duration = 4000 });
+            //ReloadContext();
+        }
+
+        Reload();
+    }
+
+    private async void Reload()
+    {
+
+        await LoadData();
+        if (grid != null)
+        {
+            await grid.Reload();
+
+        }
+        StateHasChanged();
+    }
+
+    void ItemClose(dynamic result)
+    {
+        dialogService.OnClose -= ItemClose;
+        if (result != null && grid != null)
+        {
+            grid.Reload();
+        }
+        StateHasChanged();
+    }
+
+
+    public async void TabChanged(int tab)
+    {
+        selectedTab = tab;
+        await LoadData();
+    }
+
+
+
+
+    private async Task LoadData()
+    {
+
+        if (selectedTab == 0)
+        {
+            if (PromoGroup != null)
+                PromoGroup.Load(archieve, SelectedMachanicTypes, SelectedAuditoryTypes, searchTextValue, is_promotion);
+
+        }
+        else if (selectedTab == 1)
+        {
+            if (groupedPromoList != null)
+                groupedPromoList.Load(archieve, SelectedMachanicTypes, SelectedAuditoryTypes, searchTextValue, is_promotion);
+        }
+        else if (PromoGroup != null)
+            PromoGroup.Load(archieve, SelectedMachanicTypes, SelectedAuditoryTypes, searchTextValue, is_promotion);
+
+    }
+
+    private async void Edit(PromoModel item)
+    {
+        if(!is_promotion) NavigationManager.NavigateTo($"/promo/{item.Id}");
+        else NavigationManager.NavigateTo($"/promotion/{item.Id}");
+    }
+
+    public void Add()
+    {
+        if (!is_promotion) NavigationManager.NavigateTo("/promo");
+        else NavigationManager.NavigateTo($"/promotion");
+    }
+}

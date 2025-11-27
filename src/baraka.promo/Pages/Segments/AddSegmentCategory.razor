@@ -1,0 +1,48 @@
+﻿@using Microsoft.EntityFrameworkCore;
+
+@inject DialogService dialogService
+@inject DeliveryDbContext _dbDelivery
+
+<div class="row">
+    <label class="col-12">Категория</label>
+    <div class="col-12">
+        <RadzenDropDownDataGrid @ref="grid" AllowFiltering="true" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                    AllowClear="true" @bind-Value=@categoryId Placeholder="Выберите Категория" Data=@Categories
+                    TextProperty="Name_Ru" AllowFilteringByAllStringColumns="true" ValueProperty="Id" class="w-100">
+            <Columns>
+                <RadzenDropDownDataGridColumn Property="Category.Name_Ru" Title="Категория"/>
+            </Columns>
+        </RadzenDropDownDataGrid>
+    </div>
+</div>
+<div class="row float-right mt-3">
+    <div class="col-12">
+        <div class="float-end">
+            <RadzenButton Click="@(args => dialogService.Close(new {categoryId}))" Text="Добавить" Style="width: 150px" />
+            <RadzenButton Click="@(args => dialogService.Close())" ButtonStyle="ButtonStyle.Light" Text="Отменить" Style="width: 150px" />
+        </div>
+    </div>
+</div>
+
+@code {
+    List<category> Categories;
+    Guid categoryId;
+    RadzenDropDownDataGrid<Guid> grid;
+    protected override void OnInitialized()
+    {
+        Categories = (from p in _dbDelivery.Products
+                      join pc in _dbDelivery.ProductCategories on p.CategoryId equals pc.Id
+                      group pc by new { pc.Id, pc.Name_Ru } into gr
+                     select new category
+                     {
+                         Id = gr.Key.Id,
+                         Name_Ru = gr.Key.Name_Ru
+                     }).ToList();
+    }
+
+    public class category
+    {
+        public Guid Id { get; set; }
+        public string Name_Ru { get; set; }
+    }
+}

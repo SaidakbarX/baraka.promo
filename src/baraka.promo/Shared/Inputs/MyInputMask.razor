@@ -1,0 +1,107 @@
+﻿@inject IJSRuntime JSRuntime
+@inherits InputBase<string>
+
+<div @onclick="focusInput" class="@($"inputGroup  inputGroup-costa")" style="@(Style)">
+    @if (!string.IsNullOrEmpty(Prefix))
+    {
+        <span class="@($"{(!string.IsNullOrEmpty(CurrentValue) ? "display-none" : "prefix")}")">
+            @Prefix
+        </span>
+    }
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <input id="@guid" type="text" required="" autocomplete="off" @attributes="AdditionalAttributes" style="@($"{(string.IsNullOrEmpty(Prefix) ? "padding-left:16px;" :"")}")" class="@($"{(!string.IsNullOrEmpty(CurrentValue) ? "imask-input" : "imask-input")}")" value="@CurrentValue"
+           @oninput="EventCallback.Factory.CreateBinder<string>(this, __value => CurrentValueAsString = __value, CurrentValueAsString!)" placeholder="@Placeholder" />
+    }
+    else
+    {
+        <input id="@guid" type="text" required="" autocomplete="off" @attributes="AdditionalAttributes" placeholder="@Placeholder" value="@CurrentValue"
+           @oninput="EventCallback.Factory.CreateBinder<string>(this, __value => CurrentValueAsString = __value, CurrentValueAsString!)" />
+    }
+    @* @if (StaticLabel)
+    {
+    <input id="@guid" type="text" required="" autocomplete="off" @onblur="removeValue" @attributes="AdditionalAttributes" placeholder="@Placeholder" value="@CurrentValue"
+    @oninput="EventCallback.Factory.CreateBinder<string>(this, __value => CurrentValueAsString = __value, CurrentValueAsString!)" />
+    } *@
+    <label class="@($"{(StaticLabel ? "static-label" :"")}")" for="name" style="@($"color:var(--error-costa-color)")">
+        @Label        
+    </label>
+</div>
+
+@code {
+    [Inject]
+    private IJSRuntime? jSRuntime { get; set; }
+    [Parameter]
+    public string Placeholder { get; set; } = "";
+    [Parameter]
+    public string Label { get; set; } = "";
+    [Parameter]
+    public bool StaticLabel { get; set; }
+    [Parameter]
+    public bool IsError { get; set; }
+    [Parameter]
+    public string Error { get; set; } = "";
+    [Parameter]
+    public string Prefix { get; set; } = "";
+    [Parameter]
+    public string setValue { get; set; } = "";
+    [Parameter]
+    public string InputValue { get; set; } = "";
+    [Parameter]
+    public EventCallback<string> InputValueChanged { get; set; }  // Renamed from 'ValueChanged'
+    Guid guid { get; set; }
+    [Parameter]
+    public Action<bool>? confrimAble { get; set; }
+    [Parameter]
+    public string height { get; set; } = "";
+    [Parameter]
+    public string Style { get; set; } = "";
+
+    protected override void OnInitialized()
+    {
+        guid = Guid.NewGuid();
+        CurrentValue = InputValue;  // Use the renamed parameter
+    }
+
+    private void focusInput()
+    {
+        jSRuntime?.InvokeVoidAsync("setFocus", guid.ToString());
+    }
+
+    // private void removeValue()
+    // {
+    //     if (CurrentValue?.Length <= 5)
+    //     {
+    //         CurrentValue = null;
+    //     }
+    // }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && AdditionalAttributes != null)
+        {
+            var mask = AdditionalAttributes["data-mask"]?.ToString();
+            if (!string.IsNullOrEmpty(mask))
+            {
+                await JSRuntime.InvokeVoidAsync("mask", guid.ToString(), mask);
+            }
+        }
+    }
+
+    protected override bool TryParseValueFromString(string? value, out string result, out string validationErrorMessage)
+    {
+        if (value?.Length == 14)
+            confrimAble?.Invoke(true);
+        else
+            confrimAble?.Invoke(false);
+
+        result = value ?? "";
+        validationErrorMessage = "";
+        return true;
+    }
+
+    private async Task OnInputValueChanged(string newValue)
+    {
+        await InputValueChanged.InvokeAsync(newValue);
+    }
+}

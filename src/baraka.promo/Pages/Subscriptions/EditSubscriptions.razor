@@ -1,0 +1,803 @@
+﻿@page "/edit_subscription/{Id:long}"
+
+@using Microsoft.EntityFrameworkCore
+@using System.ComponentModel.DataAnnotations
+@using static baraka.promo.Pages.Subscriptions.Subscriptions
+
+@inject ApplicationDbContext _dbApp
+@inject NotificationService NotificationService
+@inject NavigationManager NavigationManager
+@inject ILogger<EditSubscriptions> _logger
+@inject DialogService dialogService
+@inject IWebHostEnvironment _env
+@if (isLoading)
+{
+
+    <div class="main-page">
+        <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+            <RadzenProgressBarCircular Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" />
+        </div>
+    </div>
+}
+else if (subscription == null)
+{
+    <div class="main-page">
+        <div style="display: flex; justify-content: center; align-items: center; height: 100%;">
+            <RadzenText TextStyle="TextStyle.H5">Подписка не найдена</RadzenText>
+        </div>
+    </div>
+}
+else
+{
+    <div class="main-page">
+        <div style="display: flex; justify-content: space-between; align-items: center; ; background-color: lightgray;">
+            <RadzenText TextStyle="TextStyle.H4">Абонемент</RadzenText>
+            <div style="display: flex; gap: 10px;">
+                <RadzenButton Text="Назад" Icon="arrow_back" Click="@GoBack" ButtonStyle="ButtonStyle.Secondary" />
+            </div>
+        </div>
+
+
+        <div style="max-height: calc(100vh - 150px); overflow-y: auto;">
+            <RadzenCard>
+                <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H2">Основная информация</RadzenText>
+
+                <div style="display: flex; gap: 20px; margin-top: 20px;">
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Идентификатор продукта</label>
+                        <RadzenTextBox @bind-Value="@subscription.ProductId" class="col-12" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Идентификатор акции</label>
+                        <RadzenTextBox @bind-Value="@subscription.PromotionId" class="col-12" />
+                    </div>
+
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Идентификатор группы</label>
+                        <RadzenDropDown @bind-Value="@subscription.GroupId"
+                                        Data="@availableGroupIds"
+                                        Placeholder="Выберите Group ID"
+                                        class="col-12"
+                                        AllowFiltering="true"
+                                        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" />
+                    </div>
+
+                </div>
+
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Цена</label>
+                        <RadzenNumeric @bind-Value="@subscription.Price" class="col-12" Format="N2" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">НДС (%)</label>
+                        <RadzenNumeric @bind-Value="@subscription.Vat" class="col-12" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Максимальное количество</label>
+                        <RadzenNumeric @bind-Value="@subscription.MaxCount" class="col-12" />
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Код пакета</label>
+                        <RadzenTextBox @bind-Value="@subscription.PackageCode" class="col-12" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Код устройства</label>
+                        <RadzenTextBox @bind-Value="@subscription.UnitCode" class="col-12" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">MXIK</label>
+                        <RadzenTextBox @bind-Value="@subscription.MXIK" class="col-12" />
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Идентификатор страны</label>
+                        <RadzenNumeric @bind-Value="@subscription.CountryId" class="col-12" />
+                    </div>
+                    <div style="flex: 1;"></div>
+                    <div style="flex: 1;"></div>
+                </div>
+
+                <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H2" Style="margin-top: 30px;">Имена</RadzenText>
+
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Имя UZ</label>
+                        <RadzenTextBox @bind-Value="@subscription.NameUz" class="col-12" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Имя RU</label>
+                        <RadzenTextBox @bind-Value="@subscription.NameRu" class="col-12" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Имя EN</label>
+                        <RadzenTextBox @bind-Value="@subscription.NameEn" class="col-12" />
+                    </div>
+                </div>
+
+                <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H2" Style="margin-top: 30px;">Краткое содержание</RadzenText>
+
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Краткое содержание UZ</label>
+                        <RadzenTextArea @bind-Value="@subscription.ShortContent_Uz" class="col-12" Style="height: 80px" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Краткое содержание RU</label>
+                        <RadzenTextArea @bind-Value="@subscription.ShortContent_Ru" class="col-12" Style="height: 80px" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Краткое содержание EN</label>
+                        <RadzenTextArea @bind-Value="@subscription.ShortContent_En" class="col-12" Style="height: 80px" />
+                    </div>
+                </div>
+
+                <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H2" Style="margin-top: 30px;">Полное содержание</RadzenText>
+
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Содержание UZ</label>
+                        <RadzenTextArea @bind-Value="@subscription.Content_Uz" class="col-12" Style="height: 120px" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Содержание RU</label>
+                        <RadzenTextArea @bind-Value="@subscription.Content_Ru" class="col-12" Style="height: 120px" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Содержание EN</label>
+                        <RadzenTextArea @bind-Value="@subscription.Content_En" class="col-12" Style="height: 120px" />
+                    </div>
+                </div>
+
+                <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H2" Style="margin-top: 30px;">Информация о покупке</RadzenText>
+
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Название покупки UZ</label>
+                        <RadzenTextBox @bind-Value="@subscription.NamePurchaseUz" class="col-12" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Название покупки RU</label>
+                        <RadzenTextBox @bind-Value="@subscription.NamePurchaseRu" class="col-12" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Название покупки EN</label>
+                        <RadzenTextBox @bind-Value="@subscription.NamePurchaseEn" class="col-12" />
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Купить короткий контент UZ</label>
+                        <RadzenTextArea @bind-Value="@subscription.ShortContent_Purchase_Uz" class="col-12" Style="height: 80px" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Купить короткий контент RU</label>
+                        <RadzenTextArea @bind-Value="@subscription.ShortContent_Purchase_Ru" class="col-12" Style="height: 80px" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Купить короткий контент EN</label>
+                        <RadzenTextArea @bind-Value="@subscription.ShortContent_Purchase_En" class="col-12" Style="height: 80px" />
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Покупка контента UZ</label>
+                        <RadzenTextArea @bind-Value="@subscription.Content_Purchase_Uz" class="col-12" Style="height: 120px" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Покупка контента RU</label>
+                        <RadzenTextArea @bind-Value="@subscription.Content_Purchase_Ru" class="col-12" Style="height: 120px" />
+                    </div>
+                    <div style="flex: 1;">
+                        <label class="font-weight-bold">Покупка контента EN</label>
+                        <RadzenTextArea @bind-Value="@subscription.Content_Purchase_En" class="col-12" Style="height: 120px" />
+                    </div>
+                </div>
+
+                <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H2" Style="margin-top: 30px;">Картинки</RadzenText>
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1; display: flex; flex-direction: column;">
+                        <div class="input-group">
+                            <input type="text"
+                                   class="form-control"
+                                   placeholder="No file selected uz"
+                                   readonly
+                                   value="@fileNameUz" />
+                            <label class="btn btn-primary mb-0">
+                                Browse
+                                <InputFile OnChange="@((e) => OnInputFileChange(e, "uz"))"
+                                           accept="image/*"
+                                           style="display: none;" />
+                            </label>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(previewUz))
+                        {
+                            <div class="mt-3">
+                                <RadzenImage Path="@previewUz"
+                                             Style="width: 100%; height: 350px; object-fit: cover; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);"
+                                             AlternateText="File UZ" />
+                            </div>
+                        }
+                    </div>
+
+                    <div style="flex: 1; display: flex; flex-direction: column;">
+                        <div class="input-group">
+                            <input type="text"
+                                   class="form-control"
+                                   placeholder="No file selected ru"
+                                   readonly
+                                   value="@fileNameRu" />
+                            <label class="btn btn-primary mb-0">
+                                Browse
+                                <InputFile OnChange="@((e) => OnInputFileChange(e, "ru"))"
+                                           accept="image/*"
+                                           style="display: none;" />
+                            </label>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(previewRu))
+                        {
+                            <div class="mt-3">
+                                <RadzenImage Path="@previewRu"
+                                             Style="width: 100%; height: 350px; object-fit: cover; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);"
+                                             AlternateText="File RU" />
+                            </div>
+                        }
+                    </div>
+
+                    <div style="flex: 1; display: flex; flex-direction: column;">
+                        <div class="input-group">
+                            <input type="text"
+                                   class="form-control"
+                                   placeholder="No file selected en"
+                                   readonly
+                                   value="@fileNameEn" />
+                            <label class="btn btn-primary mb-0">
+                                Browse
+                                <InputFile OnChange="@((e) => OnInputFileChange(e, "en"))"
+                                           accept="image/*"
+                                           style="display: none;" />
+                            </label>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(previewEn))
+                        {
+                            <div class="mt-3">
+                                <RadzenImage Path="@previewEn"
+                                             Style="width: 100%; height: 350px; object-fit: cover; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);"
+                                             AlternateText="File EN" />
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <RadzenText TextStyle="TextStyle.H5" TagName="TagName.H2" Style="margin-top: 30px;">Фотографии покупок</RadzenText>
+                <div style="display: flex; gap: 20px; margin-top: 15px;">
+                    <div style="flex: 1; display: flex; flex-direction: column;">
+                        <div class="input-group">
+                            <input type="text"
+                                   class="form-control"
+                                   placeholder="No file selected uz"
+                                   readonly
+                                   value="@fileNamePurchaseUz" />
+                            <label class="btn btn-primary mb-0">
+                                Browse
+                                <InputFile OnChange="@((e) => OnInputFileChange(e, "purchase_uz"))"
+                                           accept="image/*"
+                                           style="display: none;" />
+                            </label>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(previewPurchaseUz))
+                        {
+                            <div class="mt-3">
+                                <RadzenImage Path="@previewPurchaseUz"
+                                             Style="width: 100%; height: 350px; object-fit: cover; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);"
+                                             AlternateText="Purchase UZ" />
+                            </div>
+                        }
+                    </div>
+
+                    <div style="flex: 1; display: flex; flex-direction: column;">
+                        <div class="input-group">
+                            <input type="text"
+                                   class="form-control"
+                                   placeholder="No file selected ru"
+                                   readonly
+                                   value="@fileNamePurchaseRu" />
+                            <label class="btn btn-primary mb-0">
+                                Browse
+                                <InputFile OnChange="@((e) => OnInputFileChange(e, "purchase_ru"))"
+                                           accept="image/*"
+                                           style="display: none;" />
+                            </label>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(previewPurchaseRu))
+                        {
+                            <div class="mt-3">
+                                <RadzenImage Path="@previewPurchaseRu"
+                                             Style="width: 100%; height: 350px; object-fit: cover; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);"
+                                             AlternateText="Purchase RU" />
+                            </div>
+                        }
+                    </div>
+
+                    <div style="flex: 1; display: flex; flex-direction: column;">
+                        <div class="input-group">
+                            <input type="text"
+                                   class="form-control"
+                                   placeholder="No file selected en"
+                                   readonly
+                                   value="@fileNamePurchaseEn" />
+                            <label class="btn btn-primary mb-0">
+                                Browse
+                                <InputFile OnChange="@((e) => OnInputFileChange(e, "purchase_en"))"
+                                           accept="image/*"
+                                           style="display: none;" />
+                            </label>
+                        </div>
+
+                        @if (!string.IsNullOrEmpty(previewPurchaseEn))
+                        {
+                            <div class="mt-3">
+                                <RadzenImage Path="@previewPurchaseEn"
+                                             Style="width: 100%; height: 350px; object-fit: cover; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);"
+                                             AlternateText="Purchase EN" />
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: center; margin-top: 20px;">
+                    <RadzenCheckBox @bind-Value="@subscription.IsActive" Name="isActive" />
+                    <RadzenLabel Text="IsActive" Component="isActive" Style="margin-left: 8px;" />
+                </div>
+
+                <div style="display: flex; gap: 10px; margin-top: 30px; justify-content: flex-end;">
+                    <RadzenButton Text="Сохранить" Icon="save" Click="@SaveChanges" ButtonStyle="ButtonStyle.Success" Disabled="@isSaving" />
+                    <RadzenButton Text="Отмена" Icon="cancel" Click="@GoBack" ButtonStyle="ButtonStyle.Secondary" />
+                </div>
+            </RadzenCard>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public long Id { get; set; }
+
+    [CascadingParameter]
+    public Task<AuthenticationState>? AuthTask { get; set; }
+
+    private SubscriptionModel? subscription;
+    private bool isLoading = true;
+    private bool isSaving = false;
+
+    private const long imageMaxSize = 10 * 1024 * 1024; 
+    private List<long> availableGroupIds = new();
+    private InputFileStream? imageFileUz;
+    private InputFileStream? imageFileRu;
+    private InputFileStream? imageFileEn;
+    private string fileNameUz = string.Empty;
+    private string fileNameRu = string.Empty;
+    private string fileNameEn = string.Empty;
+    private string previewUz = string.Empty;
+    private string previewRu = string.Empty;
+    private string previewEn = string.Empty;
+
+    private InputFileStream? imageFilePurchaseUz;
+    private InputFileStream? imageFilePurchaseRu;
+    private InputFileStream? imageFilePurchaseEn;
+    private string fileNamePurchaseUz = string.Empty;
+    private string fileNamePurchaseRu = string.Empty;
+    private string fileNamePurchaseEn = string.Empty;
+    private string previewPurchaseUz = string.Empty;
+    private string previewPurchaseRu = string.Empty;
+    private string previewPurchaseEn = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadSubscription();
+        await LoadGroupIds();
+    }
+    private async Task LoadSubscription()
+    {
+        try
+        {
+            isLoading = true;
+
+            var sub = await _dbApp.Subscriptions
+                .Where(s => s.Id == Id && !s.IsDeleted)
+                .FirstOrDefaultAsync();
+
+            if (sub != null)
+            {
+                subscription = new SubscriptionModel
+                {
+                    Id = sub.Id,
+                    NameUz = sub.NameUz,
+                    NameRu = sub.NameRu,
+                    NameEn = sub.NameEn,
+                    ProductId = sub.ProductId,
+                    MaxCount = sub.MaxCount,
+                    IsActive = sub.IsActive,
+                    CountryId = sub.CountryId,
+                    GroupId = sub.GroupId,
+                    Price = sub.Price,
+                    Vat = sub.Vat,
+                    MXIK = sub.MXIK,
+                    PackageCode = sub.PackageCode,
+                    UnitCode = sub.UnitCode,
+                    ShortContent_Uz = sub.ShortContent_Uz,
+                    ShortContent_Ru = sub.ShortContent_Ru,
+                    ShortContent_En = sub.ShortContent_En,
+                    Content_Uz = sub.Content_Uz,
+                    Content_Ru = sub.Content_Ru,
+                    Content_En = sub.Content_En,
+                    NamePurchaseUz = sub.NamePurchaseUz,
+                    NamePurchaseRu = sub.NamePurchaseRu,
+                    NamePurchaseEn = sub.NamePurchaseEn,
+                    ShortContent_Purchase_Uz = sub.ShortContent_Purchase_Uz,
+                    ShortContent_Purchase_Ru = sub.ShortContent_Purchase_Ru,
+                    ShortContent_Purchase_En = sub.ShortContent_Purchase_En,
+                    Content_Purchase_Uz = sub.Content_Purchase_Uz,
+                    Content_Purchase_Ru = sub.Content_Purchase_Ru,
+                    Content_Purchase_En = sub.Content_Purchase_En,
+                    ImageUrlUz = sub.ImageUrlUz,
+                    ImageUrlRu = sub.ImageUrlRu,
+                    ImageUrlEn = sub.ImageUrlEn,
+                    ImageUrl_Purchase_Uz = sub.ImageUrl_Purchase_Uz,
+                    ImageUrl_Purchase_Ru = sub.ImageUrl_Purchase_Ru,
+                    ImageUrl_Purchase_En = sub.ImageUrl_Purchase_En,
+                    PromotionId = sub.PromotionId
+                };
+
+                if (!string.IsNullOrEmpty(sub.ImageUrlUz))
+                {
+                    fileNameUz = sub.ImageUrlUz;
+                    previewUz = $"/img/{sub.ImageUrlUz}";
+                }
+                if (!string.IsNullOrEmpty(sub.ImageUrlRu))
+                {
+                    fileNameRu = sub.ImageUrlRu;
+                    previewRu = $"/img/{sub.ImageUrlRu}";
+                }
+                if (!string.IsNullOrEmpty(sub.ImageUrlEn))
+                {
+                    fileNameEn = sub.ImageUrlEn;
+                    previewEn = $"/img/{sub.ImageUrlEn}";
+                }
+                if (!string.IsNullOrEmpty(sub.ImageUrl_Purchase_Uz))
+                {
+                    fileNamePurchaseUz = sub.ImageUrl_Purchase_Uz;
+                    previewPurchaseUz = $"/img/{sub.ImageUrl_Purchase_Uz}";
+                }
+                if (!string.IsNullOrEmpty(sub.ImageUrl_Purchase_Ru))
+                {
+                    fileNamePurchaseRu = sub.ImageUrl_Purchase_Ru;
+                    previewPurchaseRu = $"/img/{sub.ImageUrl_Purchase_Ru}";
+                }
+                if (!string.IsNullOrEmpty(sub.ImageUrl_Purchase_En))
+                {
+                    fileNamePurchaseEn = sub.ImageUrl_Purchase_En;
+                    previewPurchaseEn = $"/img/{sub.ImageUrl_Purchase_En}";
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Ошибка",
+                Detail = ex.Message,
+                Duration = 4000
+            });
+            _logger.LogError(ex, "Error loading subscription with ID {Id}", Id);
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    async Task OnInputFileChange(InputFileChangeEventArgs e, string type)
+    {
+        try
+        {
+            var file = e.File;
+            if (file == null) return;
+
+            string extension = Path.GetExtension(file.Name);
+            if (!IsImageExtension(extension))
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Ошибка",
+                    Detail = "Можно загружать только файлы изображений.",
+                    Duration = 4000
+                });
+                return;
+            }
+
+            if (file.Size > imageMaxSize)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Error,
+                    Summary = "Ошибка",
+                    Detail = $"Размер файла не должно превышать {imageMaxSize / 1024 / 1024} МБ",
+                    Duration = 4000
+                });
+                return;
+            }
+
+            MemoryStream fileStream = new MemoryStream();
+            await using (var input = file.OpenReadStream(imageMaxSize))
+            {
+                await input.CopyToAsync(fileStream);
+            }
+            fileStream.Position = 0;
+
+            if (fileStream.Length > 0)
+            {
+                string fileName = $"{Guid.NewGuid()}{extension}".Replace("-", "").ToLower();
+                var inputFile = new InputFileStream(fileStream, fileName);
+                var bytes = fileStream.ToArray();
+                var base64 = $"data:image/png;base64,{Convert.ToBase64String(bytes)}";
+
+                switch (type)
+                {
+                    case "uz":
+                        imageFileUz = inputFile;
+                        fileNameUz = fileName;
+                        previewUz = base64;
+                        break;
+                    case "ru":
+                        imageFileRu = inputFile;
+                        fileNameRu = fileName;
+                        previewRu = base64;
+                        break;
+                    case "en":
+                        imageFileEn = inputFile;
+                        fileNameEn = fileName;
+                        previewEn = base64;
+                        break;
+                    case "purchase_uz":
+                        imageFilePurchaseUz = inputFile;
+                        fileNamePurchaseUz = fileName;
+                        previewPurchaseUz = base64;
+                        break;
+                    case "purchase_ru":
+                        imageFilePurchaseRu = inputFile;
+                        fileNamePurchaseRu = fileName;
+                        previewPurchaseRu = base64;
+                        break;
+                    case "purchase_en":
+                        imageFilePurchaseEn = inputFile;
+                        fileNamePurchaseEn = fileName;
+                        previewPurchaseEn = base64;
+                        break;
+                }
+            }
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Ошибка",
+                Detail = ex.Message,
+                Duration = 4000
+            });
+            _logger.LogError(ex, "Error uploading file");
+        }
+    }
+
+    private bool IsImageExtension(string extension)
+    {
+        var allowedExtensions = new[] { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp" };
+        return allowedExtensions.Contains(extension.ToLower());
+    }
+
+    private async Task SaveChanges()
+    {
+        if (subscription == null)
+            return;
+
+        isSaving = true;
+
+        try
+        {
+            var sub = await _dbApp.Subscriptions.FirstOrDefaultAsync(s => s.Id == Id && !s.IsDeleted);
+            if (sub == null)
+            {
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Warning,
+                    Summary = "Ошибка",
+                    Detail = "Подписка не найдена.",
+                    Duration = 3000
+                });
+                return;
+            }
+
+            sub.NameUz = subscription.NameUz;
+            sub.NameRu = subscription.NameRu;
+            sub.NameEn = subscription.NameEn;
+            sub.ProductId = subscription.ProductId;
+            sub.MaxCount = subscription.MaxCount;
+            sub.IsActive = subscription.IsActive;
+            sub.CountryId = subscription.CountryId;
+            sub.GroupId = subscription.GroupId;
+            sub.Price = subscription.Price;
+            sub.Vat = subscription.Vat;
+            sub.MXIK = subscription.MXIK;
+            sub.PackageCode = subscription.PackageCode;
+            sub.UnitCode = subscription.UnitCode;
+            sub.ShortContent_Uz = subscription.ShortContent_Uz;
+            sub.ShortContent_Ru = subscription.ShortContent_Ru;
+            sub.ShortContent_En = subscription.ShortContent_En;
+            sub.Content_Uz = subscription.Content_Uz;
+            sub.Content_Ru = subscription.Content_Ru;
+            sub.Content_En = subscription.Content_En;
+            sub.NamePurchaseUz = subscription.NamePurchaseUz;
+            sub.NamePurchaseRu = subscription.NamePurchaseRu;
+            sub.NamePurchaseEn = subscription.NamePurchaseEn;
+            sub.ShortContent_Purchase_Uz = subscription.ShortContent_Purchase_Uz;
+            sub.ShortContent_Purchase_Ru = subscription.ShortContent_Purchase_Ru;
+            sub.ShortContent_Purchase_En = subscription.ShortContent_Purchase_En;
+            sub.Content_Purchase_Uz = subscription.Content_Purchase_Uz;
+            sub.Content_Purchase_Ru = subscription.Content_Purchase_Ru;
+            sub.Content_Purchase_En = subscription.Content_Purchase_En;
+            sub.PromotionId = subscription.PromotionId;
+
+            string imgPath = Path.Combine(_env.WebRootPath, "img");
+            if (!Directory.Exists(imgPath))
+            {
+                Directory.CreateDirectory(imgPath);
+            }
+
+            if (imageFileUz != null)
+            {
+                string filePath = Path.Combine(imgPath, imageFileUz.FileName);
+                await using (FileStream fs = new FileStream(filePath, FileMode.Create))
+                {
+                    imageFileUz.Stream.Position = 0;
+                    await imageFileUz.Stream.CopyToAsync(fs);
+                }
+                sub.ImageUrlUz = imageFileUz.FileName;
+            }
+
+            if (imageFileRu != null)
+            {
+                string filePath = Path.Combine(imgPath, imageFileRu.FileName);
+                await using (FileStream fs = new FileStream(filePath, FileMode.Create))
+                {
+                    imageFileRu.Stream.Position = 0;
+                    await imageFileRu.Stream.CopyToAsync(fs);
+                }
+                sub.ImageUrlRu = imageFileRu.FileName;
+            }
+
+            if (imageFileEn != null)
+            {
+                string filePath = Path.Combine(imgPath, imageFileEn.FileName);
+                await using (FileStream fs = new FileStream(filePath, FileMode.Create))
+                {
+                    imageFileEn.Stream.Position = 0;
+                    await imageFileEn.Stream.CopyToAsync(fs);
+                }
+                sub.ImageUrlEn = imageFileEn.FileName;
+            }
+
+            // Purchase images
+            if (imageFilePurchaseUz != null)
+            {
+                string filePath = Path.Combine(imgPath, imageFilePurchaseUz.FileName);
+                await using (FileStream fs = new FileStream(filePath, FileMode.Create))
+                {
+                    imageFilePurchaseUz.Stream.Position = 0;
+                    await imageFilePurchaseUz.Stream.CopyToAsync(fs);
+                }
+                sub.ImageUrl_Purchase_Uz = imageFilePurchaseUz.FileName;
+            }
+
+            if (imageFilePurchaseRu != null)
+            {
+                string filePath = Path.Combine(imgPath, imageFilePurchaseRu.FileName);
+                await using (FileStream fs = new FileStream(filePath, FileMode.Create))
+                {
+                    imageFilePurchaseRu.Stream.Position = 0;
+                    await imageFilePurchaseRu.Stream.CopyToAsync(fs);
+                }
+                sub.ImageUrl_Purchase_Ru = imageFilePurchaseRu.FileName;
+            }
+
+            if (imageFilePurchaseEn != null)
+            {
+                string filePath = Path.Combine(imgPath, imageFilePurchaseEn.FileName);
+                await using (FileStream fs = new FileStream(filePath, FileMode.Create))
+                {
+                    imageFilePurchaseEn.Stream.Position = 0;
+                    await imageFilePurchaseEn.Stream.CopyToAsync(fs);
+                }
+                sub.ImageUrl_Purchase_En = imageFilePurchaseEn.FileName;
+            }
+
+            await _dbApp.SaveChangesAsync();
+
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Success,
+                Summary = "Успех",
+                Detail = "Подписка успешно обновлена.",
+                Duration = 3000
+            });
+
+            NavigationManager.NavigateTo("/subscriptions");
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Ошибка",
+                Detail = ex.Message,
+                Duration = 4000
+            });
+            _logger.LogError(ex, "Error saving subscription with ID {Id}", Id);
+        }
+        finally
+        {
+            isSaving = false;
+        }
+    }
+    
+
+    private async Task LoadGroupIds()
+    {
+        try
+        {
+            availableGroupIds = await _dbApp.SubscriptionGroups
+                .OrderByDescending(g => g.Id)
+                .Select(g => g.Id)
+                .ToListAsync();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error loading group IDs");
+            availableGroupIds = new List<long>();
+        }
+    }
+
+    private void GoBack()
+    {
+        NavigationManager.NavigateTo("/subscriptions");
+    }
+
+    // Helper class for file upload
+    public class InputFileStream
+    {
+        public Stream Stream { get; set; }
+        public string FileName { get; set; }
+
+        public InputFileStream(Stream stream, string fileName)
+        {
+            Stream = stream;
+            FileName = fileName;
+        }
+    }
+}

@@ -1,0 +1,15 @@
+﻿.rz-fileupload{
+    display:flex !important;
+    flex-direction:row !important;
+}
+.rz-fileupload-row{
+    margin:0px !important;
+}
+.rz-button-icon-left .rzi {
+    margin: 0px !important;
+    padding: 0px !important;
+}
+
+.hide-filename .rz-fileupload-content {
+    display: none !important;
+}

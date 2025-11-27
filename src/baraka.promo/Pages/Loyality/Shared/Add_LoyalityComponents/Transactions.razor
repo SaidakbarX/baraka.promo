@@ -1,0 +1,235 @@
+﻿@using baraka.promo.Models.Enums
+@using baraka.promo.Models.LoyaltyApiModels.Transactions
+@using baraka.promo.Services.Loyality
+@inherits BaseRazorComponent
+@inject TransactionService transactionsService
+@inject DialogService DialogService
+
+
+@if (!string.IsNullOrEmpty(CardNumber))
+{
+    <div class="d-flex flex-row" style="gap: 10px; width:100%;">
+
+        <div class="d-flex flex-column" style="gap: 10px; width:100%; flex:1;">
+            <div style="width:100%; display:flex; justify-content:end; flex-direction:column; gap:10px;">
+                <div class="w-100 d-flex flex-row" style="gap:10px;">
+                    <RadzenButton Style="flex:1;" Text="+5 000 UZS" Click="@(e=>SetCardBalance(5000))" />
+                    <RadzenButton Style="flex:1;" Text="+10 000 UZS" Click="@(e=>SetCardBalance(10000))" />
+                    <RadzenButton Style="flex:1;" Text="+15 000 UZS" Click="@(e=>SetCardBalance(15000))" />
+                    <RadzenButton Style="flex:1;" Text="+20 000 UZS" Click="@(e=>SetCardBalance(20000))" />
+                </div>
+                <div class="d-flex w-100" style="gap:10px;; align-items:center;">
+                    <RadzenAlert Size="AlertSize.ExtraSmall" AlertStyle="AlertStyle.Success" Text="@MoneyToDisplay(Balance)" Variant="Variant.Flat" Shade="Shade.Lighter" Icon="account_balance_wallet" AllowClose="false" Style="width:fit-content;"></RadzenAlert>
+                    <RadzenNumeric @bind-Value="amount" Min="100" />
+
+                    <RadzenButton Shade="Shade.Dark" Click="@(e=> confirmReplenish!.Show("Подтвердить пополнение", (MarkupString)$"Пополнится на <b>{MoneyToDisplay(amount)}</b>?",amount))" Disabled="loading || amount<=0" Text="Пополнить" ButtonStyle="ButtonStyle.Success" />
+                    @if (Balance >= amount)
+                    {
+                        <RadzenButton Shade="Shade.Dark"
+                                      Click="@(e=>confirmCharge!.Show("Подтвердить списание",(MarkupString)$"Снять {(MarkupString)$"<b>{MoneyToDisplay(amount)}"}</b> с баланса?",amount))"
+                                      Disabled="loading || amount<=0" Text="Списывать" ButtonStyle="ButtonStyle.Danger" />
+
+                    }
+                    @if (selectedItem != null && selectedItem.Status != TransactionStatus.Cancelled)
+                    {
+                        <RadzenButton Shade="Shade.Darker"
+                                      Click="@(e=>confirmDelete!.Show("Удаление",(MarkupString)$"Вы уверены, что хотите удалить транзакцию на <b>{MoneyToDisplay(selectedItem.Sum)}</b>, созданную <b>{selectedItem.CreatedBy}</b>ом в <b>{DateToDisplay(selectedItem.CreatedTime,true)}</b>?", selectedItem))"
+                                      Disabled="selectedItem.Status == TransactionStatus.Cancelled" Text="Отминить" ButtonStyle="ButtonStyle.Danger" />
+                    }
+                </div>
+            </div>
+
+            <RadzenGrid Count="_total" Data="@transactions"
+                        LoadData="@LoadData" AllowSorting="false" TItem="TransactionInfoModel"
+                        Page="@(e=> PageIndexChanged(e))"
+                        AllowFiltering="false" AllowPaging="true" PageSize="_pageSize"
+                        ExpandMode="DataGridExpandMode.Single"
+                        Value="selectedItem"
+                        RowSelect="@(args => selectedItem = args)"
+                        RowDoubleClick="@(args =>{ Selecet(selectedItem);})">
+                <Columns>
+
+                    <RadzenGridColumn TItem="TransactionInfoModel" Property="@(nameof(TransactionInfoModel.Sum))" Title="Сумма">
+                        <Template Context="transactionInfoModel">
+                            <span style="color: @(transactionInfoModel.Type==TransactionType.Replenishment ? "green":"red")">
+                                @MoneyToDisplay(transactionInfoModel.Sum * (transactionInfoModel.Type == TransactionType.Replenishment ? 1 : -1))
+                            </span>
+                        </Template>
+                    </RadzenGridColumn>
+
+                    <RadzenGridColumn TItem="TransactionInfoModel" Property="@(nameof(TransactionInfoModel.CreatedBy))" Title="Создано">
+                        <Template Context="transactionInfoModel">
+                            @transactionInfoModel.CreatedBy
+                        </Template>
+                    </RadzenGridColumn>
+
+                    <RadzenGridColumn TItem="TransactionInfoModel" Property="@(nameof(TransactionInfoModel.Status))" Title="Статус">
+                        <Template Context="transactionInfoModel">
+                            @* <RadzenAlert Size="AlertSize.ExtraSmall" AllowClose="false" AlertStyle="@(transactionInfoModel.Status==TransactionStatus.Failed ? AlertStyle.Danger : AlertStyle.Success)" ShowIcon="false" Variant="Variant.Flat">
+                        <div class="w-100 justify-content-center align-center">
+                        @(EnumHelper<TransactionStatus>.EnumToString(transactionInfoModel.Status))
+                        </div>
+                        </RadzenAlert>
+                        *@
+                            <RadzenBadge BadgeStyle="@(transactionInfoModel.Status==TransactionStatus.Success ? BadgeStyle.Success : BadgeStyle.Danger)" ShowIcon="false" Variant="Variant.Flat">
+                                <div class="w-100 justify-content-center align-center">
+                                    @(EnumHelper<TransactionStatus>.EnumToString(transactionInfoModel.Status))
+                                </div>
+                            </RadzenBadge>
+
+                        </Template>
+                    </RadzenGridColumn>
+
+                    <RadzenGridColumn TItem="TransactionInfoModel" Property="@nameof(TransactionInfoModel.Type)" Title="Тип">
+                        <Template Context="transactionInfoModel">
+                            <span style="color: @(transactionInfoModel.Type==TransactionType.Replenishment ? "green":"red")">
+                                @(EnumHelper<TransactionType>.EnumToString(transactionInfoModel.Type))
+                            </span>
+                        </Template>
+                    </RadzenGridColumn>
+
+                    <RadzenGridColumn TItem="TransactionInfoModel" Property="@(nameof(TransactionInfoModel.CreatedBy))" Title="Дата">
+                        <Template Context="transactionInfoModel">
+                            @DateToDisplay(transactionInfoModel.CanceledTime ?? transactionInfoModel.CreatedTime, true)
+                        </Template>
+                    </RadzenGridColumn>
+
+                </Columns>
+            </RadzenGrid>
+
+        </div>
+        <div class="d-flex flex-column" style="gap: 10px; width:100%; flex:1;">
+        </div>
+
+
+    </div>
+
+}
+
+<Confirm TItem="decimal" WithCard="false" @ref="confirmCharge" OnConfirm="@Charge" />
+<Confirm TItem="decimal" WithCard="false" @ref="confirmReplenish" OnConfirm="@Replenish" />
+<Confirm TItem="TransactionInfoModel" WithCard="false" @ref="confirmDelete" OnConfirm="@Delete" />
+
+
+@code {
+    [Parameter]
+    public string CardNumber { get; set; } = "";
+    [Parameter]
+    public decimal Balance { get; set; }
+    [Parameter]
+    public EventCallback<decimal> ChangeBalance { get; set; }
+
+    Confirm<decimal>? confirmCharge;
+    Confirm<decimal>? confirmReplenish;
+    Confirm<TransactionInfoModel>? confirmDelete;
+
+    List<TransactionInfoModel> transactions = new();
+    TransactionInfoModel? selectedItem;
+
+    decimal amount = 0;
+    protected override void OnInitialized()
+    {
+        _pageSize = 5;
+    }
+
+
+    protected override async void LoadData()
+    {
+        _loading = true;
+        var res = await transactionsService.List(_pageSkip, _pageSize, CardNumber);
+        _total = res.Total;
+        transactions = res.List;
+        SortData();
+        StateHasChanged();
+        _loading = false;
+    }
+
+    bool loading;
+    async Task Charge()
+    {
+        if (amount <= 0) return;
+        if (Balance < amount)
+        {
+            Notify("Вы не можете снять сумму, превышающую баланс карты");
+            return;
+        }
+        loading = true;
+        StateHasChanged();
+        var res = await transactionsService.Charge(CardNumber, amount, true);
+        transactions ??= new();
+        if (res.Id != Guid.Empty)
+        {
+            Balance -= amount;
+            loading = false;
+            StateHasChanged();
+            await ChangeBalance.InvokeAsync((amount * -1));
+            amount = 0;
+            _loading = true;
+            StateHasChanged();
+            await Task.Delay(1500);
+            LoadData();
+        }
+    }
+    async Task Replenish()
+    {
+        if (amount <= 0) return;
+        loading = true;
+        StateHasChanged();
+        var res = await transactionsService.Replenish(CardNumber, amount, true);
+        transactions ??= new();
+        if (res.Id != Guid.Empty)
+        {
+            Balance += amount;
+            loading = false;
+            StateHasChanged();
+            await ChangeBalance.InvokeAsync(amount);
+            amount = 0;
+            _loading = true;
+            await Task.Delay(1500);
+            LoadData();
+        }
+    }
+
+    private void Selecet(TransactionInfoModel? transaction)
+    {
+        if (transaction == null)
+        {
+            selectedItem = transaction;
+            return;
+        }
+        if (transaction.Status != TransactionStatus.Cancelled)
+            selectedItem = transaction;
+        else
+            selectedItem = null;
+        StateHasChanged();
+    }
+
+    async Task Delete(TransactionInfoModel transaction)
+    {
+        if (await transactionsService.Delete(transaction.Id))
+        {
+            decimal callbackAmount = (transaction.Sum * (transaction.Type == TransactionType.Replenishment ? -1 : 1));
+            Balance += callbackAmount;
+            await ChangeBalance.InvokeAsync(callbackAmount);
+            loading = false;
+            StateHasChanged();
+            selectedItem = null;
+            _loading = true;
+            await Task.Delay(1500);
+            LoadData();
+            StateHasChanged();
+        }
+    }
+
+
+    void SortData()
+    {
+        transactions.OrderByDescending(o => o.CanceledTime).ThenByDescending(o => o.CreatedTime);
+
+        StateHasChanged();
+    }
+    void SetCardBalance(decimal money)
+    {
+        amount += money;
+    }
+}

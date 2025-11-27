@@ -1,0 +1,173 @@
+﻿@page "/loyality"
+@using baraka.promo.Models.Enums
+@using baraka.promo.Models.LoyaltyApiModels.Cardholders
+@using baraka.promo.Pages.Loyality.Shared
+@using baraka.promo.Pages.Loyality.Shared.Add_LoyalityComponents
+@using baraka.promo.Services.Loyality
+@using baraka.promo.Shared.NewFolder
+@using static baraka.promo.Pages.Users.UserAddModel
+@inherits BaseRazorComponent
+@inject LoyalityCardHolderService cardHolderService
+@inject UserAddModel newUser
+
+<div style="display:flex; justify-content:space-between; align-items:center; background-color:lightgray; padding:4px 10px; width:100%;">
+    <div style="display:flex;  gap:10px; width:100%;">
+        
+        <MyMenuItem Icon="add_circle" Click="@(e=>GoTo("add_loyality"))" Text="Добавить"></MyMenuItem>
+        @if (selectedItem != null)
+        {
+            <MyMenuItem Icon="edit" Text="Редактировать" Click="@(args => { Edit(selectedItem); })"></MyMenuItem>
+            <MyMenuItem Icon="delete" Text="Удалить"
+                              Click="@(args => confirm!.Show("Подтверждать", $"Подтвердите удаление {selectedItem.Name}?", selectedItem))"></MyMenuItem>
+        }
+
+    </div>
+    <div style="display:flex; flex-direction:row; gap:10px; align-items:center;">
+        <RadzenTextBox @bind-Value="@search" />
+        <RadzenButton Click="LoadData" Text="Поиск"></RadzenButton>
+    </div>
+
+</div>
+
+<RadzenGrid Count="_total" Data="@cardHolders"
+            LoadData="@LoadData" AllowSorting="false" TItem="CardholderInfoModel"
+            Page="@(e=> PageIndexChanged(e))"
+            AllowFiltering="false" AllowPaging="true" PageSize="_pageSize" Style="height:calc(100vh - 100px)"
+            ExpandMode="DataGridExpandMode.Single"
+            RowRender="@RowRender"
+            RowExpand="RowExpand"
+            Value="@selectedItem" RowSelect="@(args => selectedItem = args)"
+            RowDoubleClick="@(args =>{ Edit(selectedItem);})">
+
+
+    <Template Context="CardholderModel">
+        <div class="d-flex flex-column" style="padding:10px;">
+            @if (string.IsNullOrEmpty(CardNumber))
+            {
+                <Add_Loyality _CardHolderId="@ExpendedCardHolder.ToString()" ReloadData="LoadData" IsUpdate />
+            }
+            <Transactions CardNumber="@CardNumber" Balance="CardholderModel.Balance" ChangeBalance="ChangeBalance" />
+        </div>
+
+    </Template>
+    <Columns>
+        <RadzenGridColumn TItem="CardholderInfoModel" Property="Name" Title="Имя пользователя" />
+
+        <RadzenGridColumn TItem="CardholderInfoModel" Property="@(nameof(CardholderInfoModel.Phone))" Title="Телефон">
+            <Template Context="cardholderInfoModel">
+                @PhoneToDisplay(cardholderInfoModel.Phone)
+            </Template>
+        </RadzenGridColumn>
+
+        <RadzenGridColumn TItem="CardholderInfoModel" Property="@(nameof(CardholderInfoModel.DateOfBirth))" Title="Дата рождения">
+            <Template Context="cardholderInfoModel">
+                @DateToDisplay(cardholderInfoModel.DateOfBirth)
+            </Template>
+        </RadzenGridColumn>
+
+        <RadzenGridColumn TItem="CardholderInfoModel" Property="@(nameof(CardholderInfoModel.CardNumber))" Title="Номер карты">
+            <Template Context="cardholderInfoModel">
+                @if (!string.IsNullOrEmpty(cardholderInfoModel.CardNumber))
+                {
+                    <RadzenBadge BadgeStyle="@(cardholderInfoModel.CardType==CardType.Common ? BadgeStyle.Light : cardholderInfoModel.CardType==CardType.Silver ? BadgeStyle.Info : BadgeStyle.Warning)" Variant="Variant.Flat">
+                        @CardNumber(cardholderInfoModel.CardNumber)
+                    </RadzenBadge>
+                }
+                @* <div style="display:flex; gap:10px;">
+                <span>
+                @CardNumber(cardholderInfoModel.CardNumber)
+                </span>
+
+                @if (!string.IsNullOrEmpty(cardholderInfoModel.CardNumber))
+                {
+                @(EnumHelper<CardType>.EnumToString(cardholderInfoModel.CardType))
+                }
+                </div>*@
+            </Template>
+        </RadzenGridColumn>
+
+        <RadzenGridColumn TItem="CardholderInfoModel" Property="@(nameof(CardholderInfoModel.Balance))" Title="Баланс">
+            <Template Context="cardholderInfoModel">
+                @MoneyToDisplay(cardholderInfoModel.Balance)
+            </Template>
+        </RadzenGridColumn>
+
+        <RadzenGridColumn TItem="CardholderInfoModel" Property="@nameof(CardholderInfoModel.Type)" Title="Тип держателя карты">
+            <Template Context="cardHolders">
+                @(EnumHelper<CardholderType>.EnumToString(cardHolders.Type))
+            </Template>
+        </RadzenGridColumn>
+
+    </Columns>
+</RadzenGrid>
+
+<Confirm TItem="CardholderInfoModel" WithCard="false" @ref="confirm" OnConfirm="OnConfirmDelete" />
+
+
+@code {
+    List<CardholderInfoModel> cardHolders = new();
+    CardholderInfoModel? selectedItem;
+    Confirm<CardholderInfoModel>? confirm;
+    Guid ExpendedCardHolder;
+    string CardNumber = "";
+    string? search = "";
+    protected override void OnInitialized()
+    {
+        _pageSize = 20;
+    }
+
+    protected override async void LoadData()
+    {
+        _loading = true;
+        var res = await cardHolderService.List(_pageSkip, _pageSize, search ?? "");
+        _total = res.Total;
+        cardHolders = res.List;
+
+        StateHasChanged();
+        _loading = false;
+    }
+
+    void RowRender(RowRenderEventArgs<CardholderInfoModel> args)
+    {
+        args.Expandable = true;
+    }
+
+    void RowExpand(CardholderInfoModel model)
+    {
+        ExpendedCardHolder = model.Id;
+        CardNumber = model.CardNumber;
+        StateHasChanged();
+    }
+
+    async Task OnConfirmDelete(CardholderInfoModel selectedItem)
+    {
+        if (await cardHolderService.Delete(selectedItem.Id))
+        {
+            cardHolders.Remove(selectedItem);
+            StateHasChanged();
+        }
+
+    }
+
+    void ChangeBalance(decimal amount)
+    {
+        if (cardHolders.FirstOrDefault(f => f.Id == ExpendedCardHolder)?.Cards.Count() > 0)
+        {
+            cardHolders.FirstOrDefault(f => f.Id == ExpendedCardHolder)!.Cards!.FirstOrDefault()!.Balance += amount;
+
+        }
+        StateHasChanged();
+    }
+
+    private void Edit(CardholderInfoModel? cardholder)
+    {
+        if (selectedItem != null)
+        {
+            GoTo($"edit_loyality/{selectedItem.Id}/{selectedItem.CardId}");
+        }
+    }
+    private void ChangePassword()
+    {
+
+    }
+}

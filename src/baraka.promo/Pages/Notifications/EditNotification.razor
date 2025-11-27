@@ -1,0 +1,106 @@
+﻿@page "/edit-notification"
+
+@using Microsoft.EntityFrameworkCore;
+@using Newtonsoft.Json;
+@using System.ComponentModel.DataAnnotations;
+@using baraka.promo.Models;
+@using baraka.promo.Pages.Promos;
+
+@inject DialogService _dialogService
+@inject NotificationService _notificationService
+@inject ApplicationDbContext _dbApp
+@inject ILogger<EditNotification> _logger
+
+<EditForm Model="editModel">
+    <div class="row">
+        <div class="col-12">
+            <div class="form-group d-flex justify-content-center" style="display: flex; flex-direction: column; align-items: baseline; row-gap: 10px;">
+                <label class="font-weight-bold">Дата начала</label>
+                <RadzenDatePicker @bind-Value=@editModel.StartDate class="col-12" Placeholder="Дата начала" ShowTime="true" ShowSeconds="true" DateFormat="MM/dd/yyyy" />
+                <ValidationMessage For="@(()=>editModel.StartDate)"></ValidationMessage>
+                <label class="font-weight-bold">Режим работы</label>
+                <div style="display: flex">
+                    <RadzenDatePicker @bind-Value=@editModel.StartTime Placeholder="Режим работы от" ShowTime="true" ShowSeconds="true" TimeOnly="true" DateFormat="HH:mm" />
+                    <ValidationMessage For="@(()=>editModel.StartTime)"></ValidationMessage>
+                    <RadzenDatePicker @bind-Value=@editModel.EndTime Placeholder="Режим работы до" ShowTime="true" ShowSeconds="true" TimeOnly="true" DateFormat="HH:mm" />
+                    <ValidationMessage For="@(()=>editModel.EndTime)"></ValidationMessage>
+                </div>
+                @* <RadzenDropDown @bind-Value=@editModel.Status Data="@statuses" TextProperty="Value" ValueProperty="Key" class="col-12" />
+                <ValidationMessage For="@(()=>editModel.Status)"></ValidationMessage>*@
+            </div>
+        </div>
+    </div>
+
+    <div class="row position-absolute" style="bottom:1.25rem;right:1.25rem">
+        <div class="col-12">
+            <RadzenButton ButtonType="ButtonType.Submit" Click="@Save" Text="Сохранять" Style="width: 150px" />
+            <RadzenButton Click="@Close" ButtonStyle="ButtonStyle.Secondary" Text="Закрывать" Style="width: 150px" />
+        </div>
+    </div>
+    <ObjectGraphDataAnnotationsValidator />
+</EditForm>
+
+@code {
+    [Parameter]
+    public string Model { get; set; }
+
+    [CascadingParameter]
+    public Task<AuthenticationState>? AuthTask { get; set; }
+
+    MessageModel messageModel;
+    EditMessageModel editModel = new EditMessageModel();
+    Dictionary<MessageHeaderStatus, string> statuses = new Dictionary<MessageHeaderStatus, string>() { { MessageHeaderStatus.Start, "Начал" }, { MessageHeaderStatus.Paused, "Приостановлено" }, { MessageHeaderStatus.Completed, "Завершенный" } };
+
+    protected override void OnInitialized()
+    {
+        messageModel = JsonConvert.DeserializeObject<MessageModel>(Model);
+        editModel.StartDate = messageModel.StartDate;
+        editModel.Status = messageModel.Status;
+        editModel.StartTime = messageModel.WorkingTimeFrom;
+        editModel.EndTime = messageModel.WorkingTimeTo;
+        base.OnInitialized();
+    }
+
+    public async void Save()
+    {
+        if (messageModel != null)
+        {
+            var mh = await _dbApp.NotificationHeaders.FirstOrDefaultAsync(a => a.Id == messageModel.Id);
+
+            mh.StartDate = editModel.StartDate == DateTime.MinValue ? DateTime.Now : editModel.StartDate;
+            mh.WorkingTimeFrom = editModel.StartTime == DateTime.MinValue ? DateTime.Now : editModel.StartTime;
+            mh.WorkingTimeTo = editModel.EndTime;
+            mh.Status = editModel.Status;
+
+            await _dbApp.SaveChangesAsync();
+            _logger.Log(LogLevel.Information, AuthTask?.Result.User.Identity?.Name);
+            StateHasChanged();
+            Close();
+        }
+    }
+
+    public void Close()
+    {
+        _dialogService.Close(null);
+    }
+
+    public class EditMessageModel
+    {
+        [Required]
+        public DateTime StartTime { get; set; }
+        public DateTime EndTime { get; set; }
+        public DateTime StartDate { get; set; }
+        public MessageHeaderStatus Status { get; set; }
+
+    }
+
+    class MessageModel
+    {
+        public Guid Id { get; set; }
+        public string? Message { get; set; }
+        public DateTime StartDate { get; set; }
+        public DateTime WorkingTimeFrom { get; set; }
+        public DateTime WorkingTimeTo { get; set; }
+        public MessageHeaderStatus Status { get; set; }
+    }
+}

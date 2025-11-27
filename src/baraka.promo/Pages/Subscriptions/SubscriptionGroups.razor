@@ -1,0 +1,179 @@
+﻿@page "/subscription_groups"
+
+@using Microsoft.EntityFrameworkCore
+@using baraka.promo.Models.SubscriptionsModels
+
+@inject ApplicationDbContext _dbApp
+@inject NotificationService NotificationService
+@inject NavigationManager NavigationManager
+@inject ILogger<SubscriptionGroups> _logger
+@inject DialogService dialogService
+
+<PageTitle>Subscription Groups</PageTitle>
+
+<RadzenMenu Style="display:flex; justify-content:space-between; background-color:lightgray;">
+    <div style="flex:1; display:flex; align-items:center;">
+        <span class="header-text">Группы подписок</span>
+        <RadzenMenuItemEx Icon="note_add" Text="Добавить группу" Click="@AddGroup"></RadzenMenuItemEx>
+
+        @if (selectedItem != null)
+        {
+            <RadzenMenuItemEx Icon="edit" Text="Редактировать" Click="@(() => EditGroup(selectedItem))"></RadzenMenuItemEx>
+            <RadzenMenuItemEx Icon="delete" Text="Удалить" Click="@(() => ConfirmDelete(selectedItem))"></RadzenMenuItemEx>
+        }
+    </div>
+
+    
+</RadzenMenu>
+
+<RadzenDataGrid @ref="grid"
+                Data="@groups"
+                TItem="SubscriptionGroupModel"
+                AllowPaging="true"
+                AllowSorting="true"
+                SelectionMode="DataGridSelectionMode.Single"
+                @bind-Value="@selectedItems"
+                RowDoubleClick="@OnRowDoubleClick"
+                PageSize="30"
+                Style="height:calc(100vh - 150px)">
+    <Columns>
+        <RadzenDataGridColumn TItem="SubscriptionGroupModel" Property="Id" Title="ID" Width="80px" />
+        <RadzenDataGridColumn TItem="SubscriptionGroupModel" Property="NameUz" Title="Названия (UZ)" Width="200px" />
+        <RadzenDataGridColumn TItem="SubscriptionGroupModel" Property="NameRu" Title="Названия (RU)" Width="200px" />
+        <RadzenDataGridColumn TItem="SubscriptionGroupModel" Property="NameEn" Title="Названия (EN)" Width="200px" />
+        <RadzenDataGridColumn TItem="SubscriptionGroupModel" Property="MaxCount" Title="Максимальное количество" Width="100px" />
+        <RadzenDataGridColumn TItem="SubscriptionGroupModel" Property="CountryId" Title="Идентификатор страны" Width="100px" />
+        <RadzenDataGridColumn TItem="SubscriptionGroupModel" Property="IsActive" Title="Статус" Width="120px">
+            <Template Context="data">
+                @if (data.IsActive)
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Активная" />
+                }
+                else
+                {
+                    <RadzenBadge BadgeStyle="BadgeStyle.Secondary" Text="Неактивная" />
+                }
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="SubscriptionGroupModel" Property="CreatedTime" Title="Created"
+                              FormatString="{0:dd.MM.yyyy HH:mm}" Width="150px" />
+    </Columns>
+</RadzenDataGrid>
+
+@code {
+    RadzenDataGrid<SubscriptionGroupModel>? grid;
+    List<SubscriptionGroupModel> groups = new();
+    IList<SubscriptionGroupModel> selectedItems = new List<SubscriptionGroupModel>();
+    SubscriptionGroupModel? selectedItem => selectedItems.FirstOrDefault();
+    bool showInactive = false;
+
+
+    
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadGroups();
+    }
+
+    private async Task LoadGroups()
+    {
+        try
+        {
+            groups = await _dbApp.SubscriptionGroups
+                .Where(g => !g.IsDeleted) 
+                .OrderByDescending(g => g.CreatedTime)
+                .Select(g => new SubscriptionGroupModel
+                {
+                    Id = g.Id,
+                    NameUz = g.NameUz,
+                    NameRu = g.NameRu,
+                    NameEn = g.NameEn,
+                    MaxCount = g.MaxCount,
+                    CountryId = g.CountryId,
+                    IsActive = g.IsActive,
+                    CreatedTime = g.CreatedTime
+                })
+                .ToListAsync();
+
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка загрузки групп");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Ошибка",
+                Detail = ex.Message
+            });
+        }
+    }
+
+
+    void AddGroup() => NavigationManager.NavigateTo("/add_subscription_group");
+
+    void EditGroup(SubscriptionGroupModel group)
+    {
+        NavigationManager.NavigateTo($"/edit_subscription_group/{group.Id}");
+    }
+
+    void OnRowDoubleClick(DataGridRowMouseEventArgs<SubscriptionGroupModel> args)
+    {
+        EditGroup(args.Data);
+    }
+
+    private async Task ConfirmDelete(SubscriptionGroupModel group)
+    {
+        var result = await dialogService.Confirm("Удалить эту группу?", "Подтверждение",
+            new ConfirmOptions { OkButtonText = "Да", CancelButtonText = "Нет" });
+        if (result == true)
+        {
+            await DeleteGroup(group);
+        }
+    }
+
+    private async Task DeleteGroup(SubscriptionGroupModel group)
+    {
+        try
+        {
+            var entity = await _dbApp.SubscriptionGroups.FindAsync(group.Id);
+            if (entity != null)
+            {
+                entity.IsDeleted = true; 
+                _dbApp.SubscriptionGroups.Update(entity);
+
+                await _dbApp.SaveChangesAsync();
+                await LoadGroups();
+
+                NotificationService.Notify(new NotificationMessage
+                {
+                    Severity = NotificationSeverity.Success,
+                    Summary = "Удалено",
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Ошибка скрытия группы");
+            NotificationService.Notify(new NotificationMessage
+            {
+                Severity = NotificationSeverity.Error,
+                Summary = "Ошибка",
+                Detail = ex.Message
+            });
+        }
+    }
+
+    public class SubscriptionGroupModel
+    {
+        public long Id { get; set; }
+        public string? NameUz { get; set; }
+        public string? NameRu { get; set; }
+        public string? NameEn { get; set; }
+        public int CountryId { get; set; }
+        public int MaxCount { get; set; }
+        public bool IsActive { get; set; }
+        public DateTime CreatedTime { get; set; }
+    }
+}

@@ -1,0 +1,54 @@
+﻿
+
+<RadzenMenu Responsive="true" Style="border-bottom:1px solid  #eaeef0;  padding-left: 10px;">
+    @*<div class="d-lg-block for-all">
+    <RadzenImage Path="/bilgilogo.svg" Style=" width: 100px; height: fit-content; margin-top: 10px; margin-left: 10px;"></RadzenImage>
+    </div>*@
+    <RadzenMenuItem Style="padding-top:5px" Text="Главная" Path="/" Icon="home"></RadzenMenuItem>
+    @*<RadzenMenuItem Style="padding-top:5px" Text="Promo" Path="/promo" Icon="note_add"></RadzenMenuItem>*@
+
+    <RadzenMenuItem Style="padding-top:5px" Text="Сегмент" Path="/segment" Icon="donut_small"></RadzenMenuItem>
+    <RadzenMenuItem Style="padding-top:5px" Text="Рассылка" Path="/messages" Icon="donut_small"></RadzenMenuItem>
+    <RadzenMenuItem Style="padding-top:5px" Text="Уведомления" Path="/notifications" Icon="announcement"></RadzenMenuItem>
+    <RadzenMenuItem Style="padding-top:5px" Text="Лояльность" Path="/loyality" Icon="loyalty"></RadzenMenuItem>
+    <RadzenMenuItem Style="padding-top:5px"
+                    Text="Лояльность настройки"
+                    Path="/loyality_settings"
+                    Icon="settings">
+    </RadzenMenuItem>
+
+    <RadzenMenuItem Style="padding-top:5px" Text="Промо группа" Path="/promo-group" Icon="label"></RadzenMenuItem>
+    @* <RadzenMenuItem Style="padding-top:5px" Text="Абонементы" Path="/subscriptions" Icon="chrome_reader_mode"></RadzenMenuItem>
+ <RadzenMenuItem Style="padding-top:5px" Text="Группа абонементов" Path="/subscription_groups" Icon="chrome_reader_mode"></RadzenMenuItem>*@
+    <RadzenMenuItem Style="padding-top:5px" Text="Акции" Path="/promotions" Icon="card_giftcard"></RadzenMenuItem>
+    <RadzenMenuItem Style="padding-top:5px" Text="Интеграции" Path="/integrations" Icon="language"></RadzenMenuItem>
+    <RadzenMenuItem Style="padding-top:5px" Text="Инап" Path="/subscription_notifications" Icon="notifications_active"></RadzenMenuItem>
+    <RadzenMenuItem Style="padding-top:5px" Text="Пользователи" Path="/userlist" Icon="account_box"></RadzenMenuItem>
+
+    <a style="margin-left: auto !important;">@AuthTask.Result.User.Identity?.Name</a>
+    <form method="post" action="Identity/Account/LogOut">
+        <button type="submit" class="nav-link btn btn-link">Выйти</button>
+    </form>
+    @*<div class="d-none d-lg-block"><RadzenImage Path="/fintechlogo.svg" Style="height: 40px; margin-top: 10px; margin-right: 10px;"></RadzenImage></div>*@
+</RadzenMenu>
+
+@code {
+    [CascadingParameter]
+    public Task<AuthenticationState>? AuthTask { get; set; }
+
+    //string UserName;
+    //protected override async void OnInitialized()
+    //{
+    //    UserName = await AuthTask.
+    //    base.OnInitialized();
+    //}
+
+    private bool collapseNavMenu = true;
+
+    private string? NavMenuCssClass => collapseNavMenu ? "collapse" : null;
+
+    private void ToggleNavMenu()
+    {
+        collapseNavMenu = !collapseNavMenu;
+    }
+}

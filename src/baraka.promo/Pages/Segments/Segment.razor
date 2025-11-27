@@ -1,0 +1,243 @@
+﻿@page "/segment"
+@using MediatR
+@using Newtonsoft.Json;
+@using System.Text;
+@using baraka.promo.Core
+@using baraka.promo.Models.Segment;
+@using System.Transactions;
+@using Microsoft.EntityFrameworkCore;
+@using baraka.promo.Models;
+@using baraka.promo.Pages.Users
+
+@inject DeliveryDbContext _dbDelivery
+@inject ApplicationDbContext _dbApp
+@inject NavigationManager NavigationManager
+@inject DialogService dialogService
+@inject NotificationService NotificationService
+@inject HttpClient http
+@inject SegmentUsers segmentUsers
+@inject IMediator _mediator
+@inject ILogger<Segment> _logger
+@inject IJSRuntime JSRuntime
+@inject IBlazorDownloadFileService BlazorDownloadFileService
+
+
+<RadzenMenu Style="display:flex; justify-content:space-between; background-color:lightgray;" @attributes="@(new Dictionary<string, object>() { { "class", "header-menu-btn-toolbar" } })">
+    <div style="display:flex; justify-content:center; align-items:center; background-color:lightgray; padding-left:10px;">
+        <span class="header-text">Сегмент</span>
+
+        <RadzenMenuItemEx Icon="note_add" Click="@Add" Text="Добавлять"></RadzenMenuItemEx>
+        @if (selectedItem != null)
+        {
+            <RadzenMenuItemEx Icon="edit" Text="Редактировать" Click="@(args => { Edit(selectedItem); })"></RadzenMenuItemEx>
+
+            <RadzenMenuItemEx Icon="delete" Text="Удалить"
+                              Click="@(args => confirm.Show("Подтверждать", "Подтвердите удаление", selectedItem))"></RadzenMenuItemEx>
+        }
+    </div>
+
+
+</RadzenMenu>
+<RadzenGrid @ref="grid" Count="@TotalCount" Data="@Segments"
+            AllowSorting="false" TItem="AddSegmentModel"
+            AllowFiltering="false" AllowPaging="true" PageSize="50" Style="height:calc(100vh - 150px)"
+            Value="@selectedItem" RowSelect="@(args => selectedItem = args)">
+    <Columns>
+        <RadzenGridColumn TItem="AddSegmentModel" Property="Name" Title="Название" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="OrderTimeFrom" Title="Время заказа от" Width="90px" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="OrderTimeTo" Title="Время заказа до" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="DateFrom" Title="Дата с" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="DateTo" Title="Дата до" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="OrderPeriodFrom" Title="Период с" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="OrderPeriodTo" Title="Период до" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="QuantityMin" Title="Минимальное количество" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="QuantityMax" Title="Количество Максимум" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="AmountMin" Title="Минимальная сумма" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="AmountMax" Title="Сумма Максимальная" Width="100px" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="TotalAmountMin" Title="Общая сумма Минимальная" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="TotalAmountMax" Title="Общая сумма Максимум" />
+        <RadzenGridColumn TItem="AddSegmentModel" Property="SegmentUserCount" Title="Кол-во клиентов" />
+        <RadzenGridColumn Context="pro" TItem="AddSegmentModel" TextAlign="TextAlign.Right">
+            <Template Context="pro">
+                <RadzenButton Icon="get_app" ButtonStyle="ButtonStyle.Danger" Variant="Variant.Flat" Size="ButtonSize.Medium"
+                              Click="@(args => Export(pro))">
+                </RadzenButton>
+            </Template>
+        </RadzenGridColumn>
+    </Columns>
+</RadzenGrid>
+<Confirm TItem="AddSegmentModel" @ref="confirm" OnConfirm="@OnConfirmDelete" />
+
+@code {
+    RadzenGrid<AddSegmentModel>? grid;
+    Confirm<AddSegmentModel>? confirm;
+
+    List<AddSegmentModel> Segments = new List<AddSegmentModel>();
+    int TotalCount;
+    AddSegmentModel selectedItem;
+    CancellationTokenSource cts = new CancellationTokenSource();
+
+    protected override async void OnInitialized()
+    {
+
+
+        base.OnInitialized();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if(firstRender)
+            await LoadData();
+    }
+
+    private async Task LoadData()
+    {
+        var orderTypes = _dbDelivery.OrderTypes.ToList();
+
+        var list = _dbApp.Segments.Where(a => a.IsDeleted == false).ToList().Select(a => new AddSegmentModel
+            {
+                Id = a.Id,
+                Name = a.Name,
+                AmountMin = a.AmountMin,
+                AmountMax = a.AmountMax,
+                QuantityMin = a.QuantityMin,
+                QuantityMax = a.QuantityMax,
+                OrderTimeFrom = a.OrderTimeFrom,
+                OrderTimeTo = a.OrderTimeTo,
+                DateFrom = a.DateFrom,
+                DateTo = a.DateTo,
+                TotalAmountMin = a.TotalAmountMin,
+                TotalAmountMax = a.TotalAmountMax,
+                OrderTypeId = a.OrderTypeIds,
+                OrderPeriodFrom = a.OrderPeriodFrom,
+                OrderPeriodTo = a.OrderPeriodTo,
+            }).ToList();
+
+
+        TotalCount = list.Count();
+
+        Segments = list;
+        StateHasChanged();
+
+        cts = new CancellationTokenSource();
+        Task.Run(LoadSegmentUsers, cts.Token);
+
+    }
+
+
+    public async void LoadSegmentUsers()
+    {
+        try
+        {
+            foreach (var item in Segments)
+            {
+                if (cts == null || cts.IsCancellationRequested) return;
+                var filter = new SegmentUserFilterModel()
+                    {
+                        Id = item.Id
+                    };
+                var command = new GetSegmentUsers.Command(filter, false);
+                var result = await _mediator.Send(command, cts.Token);
+                if (result.Data != null)
+                {
+                    item.SegmentUserCount = result.Data.TotalCount;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{ex.Message}", Duration = 4000 });
+        }
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private async void Reload()
+    {
+        cancelTask();
+        await LoadData();
+        await grid.Reload();
+        StateHasChanged();
+    }
+
+    public async void Add()
+    {
+        cancelTask();
+        NavigationManager.NavigateTo("/addsegment");
+    }
+
+    public void Edit(AddSegmentModel model)
+    {
+        cancelTask();
+        NavigationManager.NavigateTo($"/addsegment/{model.Id}");
+    }
+
+    public async void Export(AddSegmentModel model)
+    {
+        try
+        {
+
+            var _filter = new SegmentUserFilterModel()
+            {
+                Id = model.Id    
+            };
+
+
+            string filterJson = JsonConvert.SerializeObject(_filter);
+            HttpContent httpContent = new StringContent(filterJson, Encoding.UTF8, "application/json");
+
+            var r = await http.PostAsync($"https://localhost:7123/api/promo/Export", httpContent);
+            var file = await r.Content.ReadAsByteArrayAsync();
+
+            var base64 = Convert.ToBase64String(file);
+
+            string fileName = "segmentUsers.xls";
+            string contentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            
+            await JSRuntime.InvokeVoidAsync("BlazorDownloadFile", fileName, contentType, base64);
+            
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, ex.Message);
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{ex.Message}", Duration = 4000 });
+        }
+    }
+
+    private async Task OnConfirmDelete(AddSegmentModel obj)
+    {
+        try
+        {
+            cancelTask();
+            var segment = _dbApp.Segments.FirstOrDefault(a => a.Id == obj.Id);
+            if (segment != null)
+            {
+                segment.IsDeleted = true;
+                await _dbApp.SaveChangesAsync();
+            }
+
+            selectedItem = null;
+
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, e.Message);
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{e.Message}", Duration = 4000 });
+        }
+
+        Reload();
+    }
+
+    public class userCount
+    {
+        public List<string> data { get; set; }
+    }
+
+    private void cancelTask()
+    {
+        if (cts != null)
+        {
+            cts.Cancel();
+            cts = null;
+        }
+    }
+}

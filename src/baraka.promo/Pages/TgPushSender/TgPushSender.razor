@@ -1,0 +1,713 @@
+﻿@page "/tg_push_sender"
+@using MediatR;
+@using Microsoft.EntityFrameworkCore;
+@using Newtonsoft.Json;
+@using Telegram.Bot;
+@using Telegram.Bot.Exceptions;
+@using Telegram.Bot.Types.Enums;
+@using Telegram.Bot.Types;
+@using Telegram.Bot.Types.ReplyMarkups;
+@using baraka.promo.BackgroundService.BackgroundModels;
+@using baraka.promo.Core;
+@using baraka.promo.Models.Segment;
+@using baraka.promo.Models.TgMessageModel;
+
+@inject IJSRuntime jsRuntime
+@inject ApplicationDbContext _dbApp
+@inject DeliveryDbContext _dbDelivery
+@inject NotificationService NotificationService
+@inject IMediator _mediator
+@inject ILogger<TgPushSender> _logger
+@inject NavigationManager NavigationManager
+@inject TgHelper tgHelper
+@inject IConfiguration configuration
+@inject DialogService dialogService
+@inject TasksToRun _tasksToRun
+
+<RadzenMenu Style="display:flex; justify-content:space-between; background-color:lightgray;" @attributes="@(new Dictionary<string, object>() { { "class", "header-menu-btn-toolbar" } })">
+    <div style="display:flex; align-items:center; background-color:lightgray; width: 100%; padding: 0px 35px 0px 8px;">
+        <span class="header-text">Тип филтьра</span>
+        <RadzenSelectBar @bind-Value=@value TValue="bool" Size="ButtonSize.Small" Style="background-color: white; margin-left: 10px;">
+            <Items>
+                <RadzenSelectBarItem Text="Ручной" Value="true" />
+                <RadzenSelectBarItem Text="Сегмент" Value="false" />
+            </Items>
+        </RadzenSelectBar>
+        @if(value)
+        {
+            <div style="display:flex; align-items: center; margin: 10px;">
+
+                <RadzenLabel Text="Рестораны" Component="DropDownMultipleChips" Style="margin-right: 8px; vertical-align: middle;" />
+                <RadzenDropDown @bind-Value=@selectedRestaurants Data=@restaurantList TextProperty="Name" ValueProperty="Id" Name="DropDownMultipleChips"
+                            Multiple=true AllowClear=true Placeholder="Выберите рестораны" Chips=true Style="width: 100%; max-width: 400px;" />
+
+            </div>
+        }else
+        {
+            <div style="display:flex; align-items: center; margin: 10px;">
+
+                <RadzenLabel Text="Сегменты" Component="DropDownMultipleChips" Style="margin-right: 8px; vertical-align: middle;" />
+                <RadzenDropDown @bind-Value=@segmentId Data=@segmentList TextProperty="Name" ValueProperty="Id" Name="DropDownMultipleChips"
+                            Multiple=false AllowClear=true Placeholder="Выберите сегмент" Chips=true Style="width: 100%; max-width: 400px;" />
+
+            </div>
+            
+        }
+
+        <div style="display: flex; column-gap: 10px;">
+
+            <div style="margin-top: 5px;">
+                <RadzenCheckBox TValue="bool" Value=@valueUz Change=@(args => valueUz = args) Name="CheckBox2" />
+                <RadzenLabel Text="UZ" Component="CheckBox2" />
+            </div>
+            <div style="margin-top: 5px;">
+                <RadzenCheckBox TValue="bool" Value=@valueRu Change=@(args => valueRu = args) Name="CheckBox2" />
+                <RadzenLabel Text="RU" Component="CheckBox2" />
+            </div>
+            <div style="margin-top: 5px;">
+                <RadzenCheckBox TValue="bool" Value=@valueEng  Change=@(args => valueEng = args) Name="CheckBox2" />
+                <RadzenLabel Text="ENG" Component="CheckBox2" />
+            </div>
+
+            
+            @if (loading)
+            {
+                <div>
+                    <RadzenProgressBarCircular Style="margin-left: 60px" Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+                </div>
+            }
+
+            <div>
+                <RadzenLabel Style="background-color: whitesmoke;border-radius: 2px;width: 100px;margin-top: 5px;">@userCount</RadzenLabel>
+            </div>
+
+        </div>
+        <div style="flex:1; display: flex; justify-content: end;">
+            <RadzenUpload Multiple="false" Auto="true" Style="display:flex; flex-direction:row; margin-right: 10px;" Icon="upload_file" ChooseText="" Accept=".xlsx, .xls, .csv" Change="@OnFileChange" InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select file" }})" />
+            <RadzenButton Click="@Refresh" Icon="refresh" ButtonStyle="ButtonStyle.Light" />
+        </div>
+
+    </div>
+
+
+</RadzenMenu>
+
+<div style="display: flex;">
+    <RadzenCard Style="display: flex;row-gap: 25px; flex-direction: column; width: 80%;">
+        <div>
+            <RadzenText TextStyle="TextStyle.Subtitle2" TagName="TagName.H3">Текст</RadzenText>
+            <RadzenTextArea Placeholder="Вход здесь..." Change=@(args => OnChange(args, "TextArea with placeholder")) class="w-100" Style="height: 200px" aria-label="TextArea with placeholder" />
+        </div>
+
+
+        <div class="input-group pt-1 align-items-center">
+            <div class="custom-file">
+                <InputFile OnChange="@OnInputFileChange" class="custom-file-input" type="file" id="inputGroupFile05" aria-describedby="inputGroupFileAddon05" />
+                <label class="custom-file-label" for="inputGroupFile05">@fileName</label>
+            </div>
+        </div>
+        <div style="display: flex; align-items: center;">
+            <EditForm Model="@newModel" style="display: flex; column-gap: 10px;">
+                <MyInputMask Prefix="+998" data-mask="00 000 00 00" @bind-Value="@newModel.TestPhone" Label="Тестовый номер телефона" />
+                @if (disableTime)
+                {
+                    <div style="margin-left: 20px;">
+                        <RadzenLabel Text="Дата начала" Component="DatePickerTimeOnly" Style="margin-right: 8px; vertical-align: middle;" />
+                        <RadzenDatePicker @bind-Value=@newModel.StartDate ShowTime="true" DateFormat="MM/dd/yyyy" Style="width: 150px; margin-right: 10px" />
+                    
+                        <RadzenLabel Text="Режим работы от" Component="DatePickerTimeOnly" Style="margin-right: 8px; vertical-align: middle;" />
+                        <RadzenDatePicker @bind-Value=@newModel.TimeFrom ShowTime="true" TimeOnly="true" DateFormat="HH:mm" Style="width: 100px" />
+
+                        <RadzenLabel Text="до" Component="DatePickerTimeOnly" Style="margin-right: 8px; vertical-align: middle;" />
+                        <RadzenDatePicker @bind-Value=@newModel.TimeTo ShowTime="true" TimeOnly="true" DateFormat="HH:mm" Style="width: 100px" />
+                    </div>
+                
+                }
+
+            </EditForm>
+            <div style="display: flex; margin-left: auto; column-gap: 10px;">
+                @if (loadingSend)
+                {
+                    <div>
+                        <RadzenProgressBarCircular Style="margin-left: 60px" Value="100" ShowValue="false" Mode="ProgressBarMode.Indeterminate" Size="ProgressBarCircularSize.Small" />
+                    </div>
+                }
+                <RadzenButton Variant="Variant.Flat" Click=@AddButton Text="Создать кнопку" ButtonStyle="ButtonStyle.Success" />
+                <RadzenButton Disabled="@disableSend" Variant="Variant.Flat" Click=@Click Text="Отправить" ButtonStyle="ButtonStyle.Primary" />
+                @*<RadzenButton Variant="Variant.Flat" Click=@Cancel Text="Cancel" ButtonStyle="ButtonStyle.Danger" />*@
+            </div>
+
+        </div>
+
+    </RadzenCard>
+
+    <RadzenCard Style="height: 200px; width: 300px; margin-inline-start: auto; background-color: ghostwhite;">
+        <RadzenLabel>
+            @textInfo
+        </RadzenLabel>
+    </RadzenCard>
+    
+</div>
+
+
+@code {
+    [CascadingParameter]
+    public Task<AuthenticationState>? AuthTask { get; set; }
+
+    bool disableSend;
+    bool valueUz = false;
+    bool valueRu = false;
+    bool valueEng = false;
+    bool value = true;
+    string fileName = "Выберите файл";
+    int userCount;
+    bool disableTime = true;
+    bool loading = false;
+    bool loadingSend = false;
+
+    SendModel newModel = new();
+    List<RestaurantModel> restaurantList = new List<RestaurantModel>();
+    List<SegmentModel> segmentList = new List<SegmentModel>();
+    List<TgUserModel> tgUsers = new List<TgUserModel>();
+    CancellationTokenSource cts = new CancellationTokenSource();
+
+    private List<Guid?> selectedRestaurants = new List<Guid?>();
+
+    //private Guid? segmentId;
+    int segmentId;
+
+
+    IEnumerable<Product> products;
+
+    private const int TextMax = 4096;
+    private const int TextMaxForImgAndVideo = 1024;
+    private const int PhotoMaxSize = 10;
+    private const int PhotoMaxPoint = 10000;
+    private const int PhotoRatio = 20;
+    private const int VideoMaxSize = 50;
+
+    long imageMaxSize = 10240 * 1024;
+    long videoMaxSize = 51200 * 1024;
+    string sentFileId = "";
+    string extension = "";
+    InputFileStream? inputFile;
+    string textInfo = "";
+
+    protected async override Task OnInitializedAsync()
+    {
+        textInfo = $"Кол-во символов (макс:{TextMaxForImgAndVideo}), \n" +
+                                $"размер файла (макс:{PhotoMaxSize} MB), \n" +
+                                $"разрешение (макс:{PhotoMaxPoint}x{PhotoMaxPoint}), \n" +
+                                $"пропорция (макс:{PhotoRatio}x1) \n" +
+                                $"Кол-во символов (макс:{TextMaxForImgAndVideo}), \n" +
+                                $"размер файла (макс:{VideoMaxSize} MB) \n";
+
+        //NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Info, Summary = "Info", Detail = $"{textInfo}", Duration = -1 });
+
+        await GetSegments();
+        await GetRestaurants();
+
+        await Refresh();
+
+        //return base.OnInitializedAsync();
+    }
+
+    async void OnFileChange(UploadChangeEventArgs args)
+    {
+        foreach (var file in args.Files)
+        {
+            try
+            {
+                long maxFileSize = 10 * 1024 * 1024;
+                // read file
+                if (file != null)
+                {
+                    using (var stream = file.OpenReadStream(maxFileSize))
+                    {
+                        if (file.Name.EndsWith(".xlsx") || file.Name.EndsWith(".xls"))
+                        {
+                            // Handle Excel files with EPPlus
+                            var excelService = new ImportExcel();
+                            newModel.Phone = await excelService.GetPhoneNumbersFromExcelAsync(stream);
+                        }
+                        else if (file.Name.EndsWith(".csv"))
+                        {
+                            // Handle CSV files
+                            var csvService = new ImportExcel();
+                            newModel.Phone = await csvService.GetPhoneNumbersFromCsvAsync(stream);
+                        }
+                    }
+
+                    await UserCount();
+                }
+            }
+            catch (Exception ex)
+            {
+                NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{ex.Message}", Duration = 4000 });
+            }
+        }
+    }
+
+    void AddButtonDialogClose(dynamic result)
+    {
+        dialogService.OnClose -= AddButtonDialogClose;
+
+        if (result != null)
+        {
+            newModel.ButtonsJson = result;
+            StateHasChanged();
+        }
+    }
+
+    void AddButton()
+    {
+        dialogService.OnClose += AddButtonDialogClose;
+
+        dialogService.Open<AddButton>("Добавить кнопки", 
+           parameters: new Dictionary<string, object>() { { "Buttons", newModel.ButtonsJson } },
+           options: new DialogOptions() { Width = "550px" });
+    }
+
+    private async Task OnInputFileChange(InputFileChangeEventArgs e)
+    {
+        try
+        {
+
+            var file = e.File;
+            string selectedFileName = "";
+            if (file != null)
+            {
+                selectedFileName = file.Name;
+                newModel.IsImage = IsImageExtension(Path.GetExtension(selectedFileName));
+                StateHasChanged();
+            }
+
+            if((bool)newModel.IsImage)
+            {
+
+                if (e.File.Size > imageMaxSize)
+                {
+                    NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"FileMaxSize {imageMaxSize}", Duration = 4000 });
+
+                    return;
+                }
+            }
+            else
+            {
+                if (e.File.Size > videoMaxSize)
+                {
+                    NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"FileMaxSize {videoMaxSize}", Duration = 4000 });
+
+                    return;
+                }
+
+            }
+
+
+            MemoryStream fileStream = new MemoryStream();
+            await using (var input = e.File.OpenReadStream(videoMaxSize))
+            {
+                await input.CopyToAsync(fileStream);
+            }
+
+            // Check if the fileStream is non-empty before proceeding
+            fileStream.Position = 0;
+            if (fileStream.Length > 0)
+            {
+                inputFile = new InputFileStream(fileStream, selectedFileName);
+
+            }
+            else
+            {
+                _logger.LogError("File is empty or not read properly.");
+            }
+            fileName = selectedFileName ?? "";
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{ex.Message}", Duration = 4000 });
+            _logger.LogError(ex.Message, ex);
+        }
+    }
+
+    async Task GetSegments()
+    {
+        var list = await _dbApp.Segments.ToListAsync();
+
+        segmentList = list.Select(a => new SegmentModel { Id = a.Id, Name = a.Name }).ToList();
+        StateHasChanged();
+    }
+    public async Task LoadSegmentUsers()
+    {
+        try
+        {
+            //if (cts == null || cts.IsCancellationRequested) return;
+            var filter = new SegmentUserFilterModel()
+                {
+                    Id = segmentId
+                };
+            var command = new GetSegmentUsers.Command(filter, true);
+            var result = await _mediator.Send(command);
+
+            if (result.Data != null)
+            {
+                //userCount = result.Data.TotalCount;
+                newModel.Phone = result.Data.Value;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{ex.Message}", Duration = 4000 });
+        }
+        StateHasChanged();
+        //await InvokeAsync(StateHasChanged);
+    }
+
+    async void Click()
+    {
+        await Refresh();
+        //disableSend = true;
+        //StateHasChanged();
+
+        await Task.Run(Send);
+
+        //disableSend = false;
+        //StateHasChanged();
+    }
+
+    async Task Send()
+    {
+        await InvokeAsync(async () =>
+        {
+            loadingSend = true;
+            disableSend = true;
+
+            StateHasChanged();
+
+            await Refresh();
+        });
+
+
+        if (!string.IsNullOrEmpty(newModel.TestPhone))
+        {
+            //var tgHelper = new TgHelper();
+            var list = new List<string>();
+            var testPhone = "+998" + newModel.TestPhone.Replace(" ", "");
+            list.Add(testPhone);
+            var client = tgHelper.GetClients(list, true, true, true, false).Result;
+            if(client.FirstOrDefault() == null)
+                NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"Bot has not such user {testPhone}", Duration = 4000 });
+
+            var testUser = await SendToUser(long.Parse(client.FirstOrDefault().TelegramId), newModel.Message, newModel.IsImage ?? false, inputFile, newModel.ButtonsJson);
+            await InvokeAsync(() =>
+            {
+                loadingSend = false;
+                disableSend = false;
+                StateHasChanged();
+
+            });
+        }
+        else
+        {
+            _ = await SendToUser(2302293, newModel.Message, newModel.IsImage ?? false, inputFile, newModel.ButtonsJson);
+
+            var model = new SendModel
+            {
+                    FileId = sentFileId,
+                    ChatIds = tgUsers,
+                    IsImage = newModel.IsImage,
+                    Json = value ? JsonConvert.SerializeObject(new { Restaurants = selectedRestaurants, Uz = valueUz, Ru = valueRu, Eng = valueEng}) : null,
+                    SegmentId = value ? segmentId : null,
+                    Message = newModel.Message,
+                    TestPhone = newModel.TestPhone,
+                    TimeFrom = newModel.TimeFrom,
+                    TimeTo = newModel.TimeTo,
+                    ButtonsJson = newModel.ButtonsJson
+            };
+
+            await SaveToDatabase(model);
+
+            await InvokeAsync(() =>
+            {
+                loadingSend = false;
+                disableSend = false;
+                StateHasChanged();
+
+            });
+
+            NavigationManager.NavigateTo("/messages");
+        }
+    }
+
+    //async void Cancel()
+    //{
+    //    var mheaders = await _dbApp.MessageHeaders.ToListAsync();
+    //    foreach (var item in mheaders)
+    //    {
+    //        item.Status = Models.MessageHeaderStatus.Paused;
+    //        await _dbApp.SaveChangesAsync();
+    //    }
+    //}
+
+    async Task Refresh()
+    {
+        loading = true;
+        if (value)
+        {
+            await GetClients();
+        }
+        else
+        {
+            await LoadSegmentUsers();
+        }
+
+        await UserCount();
+
+        loading = false;
+        StateHasChanged();
+    }
+
+    async Task GetRestaurants()
+    {
+        var restaurants = await _dbDelivery.Restaurants.ToListAsync();
+
+        restaurantList = restaurants.Select(a => new RestaurantModel { Id = a.Id, Name = a.Name }).ToList();
+    }
+
+    async Task GetClients()
+    {
+        var users = await (from d in _dbDelivery.Deliveries
+                           join o in _dbDelivery.Orders on d.OrderId equals o.Id
+                           where selectedRestaurants.Contains(o.RestaurantId)
+                           where !string.IsNullOrEmpty(d.Phone1)
+                           group d by d.Phone1 into g
+                           select new
+                           {
+                               Phone = g.Key,
+                               OrderCount = g.Count()
+                           }).ToListAsync();
+
+        newModel.Phone = users.Select(a => a.Phone).ToList();
+        StateHasChanged();
+    }
+
+    Task UserCount()
+    {
+        //var tgHelper = new TgHelper();
+        userCount = tgHelper.GetClientCount(newModel.Phone, valueUz, valueRu, valueEng, false).Result;
+        StateHasChanged();
+
+        tgUsers = tgHelper.GetClients(newModel.Phone, valueUz, valueRu, valueEng, false).Result;
+        StateHasChanged();
+
+        return Task.CompletedTask;
+    }
+
+
+
+    void OnChange(string value, string name)
+    {
+        newModel.Message = value;
+        StateHasChanged();
+    }
+
+    private static bool IsImageExtension(string extension)
+    {
+        extension = extension.ToLower();
+        string[] imageExtensions = { ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".jfif" };
+        return Array.Exists(imageExtensions, ext => ext == extension);
+    }
+
+    private static bool IsVideoExtension(string extension)
+    {
+        extension = extension.ToLower();
+        string[] videoExtensions = { ".mp4", ".avi", ".mkv", ".mov" };
+        return Array.Exists(videoExtensions, ext => ext == extension);
+    }
+
+    public async Task<bool> SendToUser(long telegramId, string? message, bool isPhoto, InputFileStream? inputFile = null, string? tgButtons = null)
+    {
+        bool result = false;
+        try
+        {
+            IReplyMarkup buttons = null;
+            if (!string.IsNullOrEmpty(tgButtons))
+            {
+                var list = JsonConvert.DeserializeObject<List<TgButtonModel>>(tgButtons);
+                buttons = getButtuns(list);
+            }
+
+            var token = configuration.GetSection("BotToken").Value;
+            var botClient = new TelegramBotClient(token);
+            if (inputFile == null && string.IsNullOrEmpty(sentFileId))
+            {
+                await botClient.SendTextMessageAsync(telegramId, message, parseMode: ParseMode.Html, replyMarkup: buttons);
+            }
+            else
+            {
+                Telegram.Bot.Types.InputFile file = inputFile;
+                if (!string.IsNullOrEmpty(sentFileId))
+                    file = Telegram.Bot.Types.InputFile.FromFileId(sentFileId);
+                Telegram.Bot.Types.Message tgMessage;
+
+                if (isPhoto)
+                {
+                    tgMessage = await botClient.SendPhotoAsync(telegramId, file, caption: message, parseMode: ParseMode.Html, replyMarkup: buttons);
+                    if (string.IsNullOrEmpty(sentFileId))
+                        sentFileId = tgMessage.Photo?.LastOrDefault()?.FileId;
+                }
+                else
+                {
+                    tgMessage = botClient.SendVideoAsync(telegramId, file, 0, 0, 0, caption: message, parseMode: ParseMode.Html, replyMarkup: buttons).Result;
+                    if (string.IsNullOrEmpty(sentFileId))
+                        sentFileId = tgMessage.Video?.FileId;
+                }
+            }
+
+            result = true;
+        }
+        catch (ApiRequestException tgError)
+        {
+            if (tgError.ErrorCode == 429)
+            {
+                await SendToUser(telegramId, message, isPhoto, inputFile, tgButtons);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex.Message, ex);
+            Console.WriteLine(ex.Message);
+        }
+
+        return result;
+    }
+
+    private IReplyMarkup? getButtuns(List<TgButtonModel>? buttons)
+    {
+        if (buttons == null || buttons.Count() == 0) return null;
+
+        List<InlineKeyboardButton> rowItems = new List<InlineKeyboardButton>();
+        foreach (var button in buttons)
+        {
+            InlineKeyboardButton ikb = new InlineKeyboardButton(button.Name);
+            ikb.WebApp = new Telegram.Bot.Types.WebAppInfo();
+            ikb.WebApp.Url = button.Url;
+            rowItems.Add(ikb);
+        }
+        return new InlineKeyboardMarkup(rowItems);
+    }
+
+    async Task SaveToDatabase(SendModel model)
+    {
+        try
+        {
+            var guid = Guid.NewGuid();
+            //var status = _dbApp.MessageHeaders.Any(a => a.Status == Models.MessageHeaderStatus.Start) ? Models.MessageHeaderStatus.Paused : Models.MessageHeaderStatus.Start;
+
+            await _dbApp.MessageHeaders.AddAsync(new MessageHeader
+                {
+                    Id = guid,
+                    FileId = model.FileId,
+                    IsImage = model.IsImage,
+                    Json = model.Json,
+                    Message = model.Message,
+                    SegmentId = model.SegmentId,
+                    WorkingTimeFrom = model.TimeFrom,
+                    WorkingTimeTo = model.TimeTo,
+                    Status = Models.MessageHeaderStatus.New,
+                    CreatedTime = DateTime.Now,
+                    CreatedBy = AuthTask?.Result.User.Identity?.Name,
+                    StartDate = model.StartDate >= DateTime.Today ? model.StartDate : DateTime.Today,
+                    JsonButtons = model.ButtonsJson
+                });
+            await _dbApp.SaveChangesAsync();
+
+            var messageHeader = await _dbApp.MessageHeaders.FirstOrDefaultAsync(a => a.Id == guid);
+
+
+
+            _tasksToRun.Enqueue(TaskSettings.FromMonitorSettings(new BackgroundService.SettingsModel
+            {
+                ChatIds = model.ChatIds,
+                MessageHeaderId = messageHeader.Id
+            }));
+
+            //foreach (var item in model.ChatIds)
+            //{
+            //    await _dbApp.Messages.AddAsync(new baraka.promo.Data.Message
+            //        {
+            //            ChatId = long.Parse(item.TelegramId),
+            //            MessageHeaderId = messageHeader.Id,
+            //            Status = Models.TgMessageModel.Status.New
+            //        });
+            //    await _dbApp.SaveChangesAsync();
+            //}
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex.Message, ex);
+        }
+        await InvokeAsync(() =>
+        {
+            StateHasChanged();
+        });
+    }
+
+    //void CheckFileType()
+    //{
+    //    if (!string.IsNullOrEmpty(selectedFileName))
+    //    {
+    //        string fileType = GetFileType(selectedFileName);
+    //        fileTypeResult = fileType;
+    //    }
+    //}
+
+    string GetFileType(string fileName)
+    {
+        string extension = Path.GetExtension(fileName)?.ToLower();
+
+        if (extension == ".jpg" || extension == ".jpeg" || extension == ".png" || extension == ".gif")
+        {
+            return "Image";
+        }
+        else if (extension == ".mp4" || extension == ".avi" || extension == ".mkv" || extension == ".mov")
+        {
+            return "Video";
+        }
+        else
+        {
+            return "Unknown";
+        }
+    }
+
+    public class SendModel
+    {
+        public DateTime StartDate { get; set; }
+        public DateTime TimeFrom { get; set; }
+        public DateTime TimeTo { get; set; }
+        public List<TgUserModel> ChatIds { get; set; }
+        public string? FileId { get; set; }
+        public int? SegmentId { get; set; }
+        public List<string> Phone { get; set; }
+        public string? Message { get; set; }
+        public string? Json { get; set; }
+        public bool? IsImage { get; set; }
+        public string? TestPhone { get; set; }
+        public string? ButtonsJson { get; set; }
+    }
+
+    public class RestaurantModel
+    {
+        public Guid Id { get; set; }
+        public string? Name { get; set; }
+    }
+
+    private class SegmentModel
+    {
+        public int Id { get; set; }
+        public string Name { get; set; }
+    }
+
+}

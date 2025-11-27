@@ -1,0 +1,59 @@
+﻿@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager;
+
+
+<PageTitle>baraka.promo</PageTitle>
+<RadzenDialog></RadzenDialog>
+<RadzenNotification></RadzenNotification>
+<RadzenTooltip />
+
+<div>
+    <CascadingAuthenticationState>
+        <AuthorizeView>
+            <Authorized>
+                <NavMenu />
+                <div class="main">
+                    <div>
+                        @Body
+                    </div>
+                </div>
+            </Authorized>
+            <NotAuthorized>
+                @*<LoginDisplay/>*@
+            </NotAuthorized>
+        </AuthorizeView>
+    </CascadingAuthenticationState>
+</div>
+
+@*<div class="page">
+    <div class="sidebar">
+    </div>
+
+    <main>
+        <div class="top-row px-4 auth">
+            <NavMenu />
+            <LoginDisplay />
+            <a href="https://docs.microsoft.com/aspnet/" target="_blank">About</a>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>*@
+
+@code {
+    [CascadingParameter]
+    public Task<AuthenticationState>? AuthTask { get; set; }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!NavigationManager.Uri.ToLower().EndsWith("/login"))
+        {
+        var user = AuthTask?.Result?.User;
+        if (user?.Identity?.IsAuthenticated != true)
+            NavigationManager.NavigateTo("/login",true);
+        }
+        base.OnAfterRender(firstRender);
+    }
+}

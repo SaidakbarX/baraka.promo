@@ -1,0 +1,90 @@
+﻿@typeparam TItem
+@implements IDisposable
+
+@inject DialogService dialogService
+
+@code {
+    [Parameter]
+    public EventCallback<TItem> OnConfirm { get; set; }
+    [Parameter]
+    public EventCallback<TItem> OnNo { get; set; }
+    [Parameter]
+    public bool WithCard { get; set; } = true;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+    }
+
+    async void Close(dynamic result)
+    {
+        dialogService.OnClose -= Close;
+
+        if (result != null)
+        {
+            await OnConfirm.InvokeAsync(result);
+        }
+    }
+
+    public async Task Show(string title, MarkupString text, TItem obj)
+    {
+        dialogService.OnClose += Close;
+
+        await dialogService.OpenAsync(title, ds =>
+        WithCard ?
+
+        @<RadzenCard>
+            <p style="margin:0 10px 10px 10px;">@text</p>
+            <div class="col-12">
+                <div style="float:right">
+                    <RadzenButton Text="Да" Click="() => ds.Close(obj)" Style="width:Auto" />
+                    <RadzenButton Text="Нет" Click="() => { ds.Close(null); OnNo.InvokeAsync(obj);} " ButtonStyle="ButtonStyle.Secondary" Style="width:Auto" />
+                </div>
+            </div>
+        </RadzenCard>
+            :
+        @<div>
+            <p style="margin:0 10px 10px 10px;">@text</p>
+            <div class="col-12">
+                <div style="float:right">
+                    <RadzenButton Text="Да" Click="() => ds.Close(obj)" Style="width:Auto" />
+                    <RadzenButton Text="Нет" Click="() => { ds.Close(null); OnNo.InvokeAsync(obj);} " ButtonStyle="ButtonStyle.Secondary" Style="width:Auto" />
+                </div>
+            </div>
+        </div>
+            );
+    }
+    public async Task Show(string title, string text, TItem obj)
+    {
+        dialogService.OnClose += Close;
+
+        await dialogService.OpenAsync(title, ds =>
+        WithCard ?
+
+        @<RadzenCard>
+            <p style="margin:0 10px 10px 10px;">@text</p>
+            <div class="col-12">
+                <div style="float:right">
+                    <RadzenButton Text="Да" Click="() => ds.Close(obj)" Style="width:Auto" />
+                    <RadzenButton Text="Нет" Click="() => { ds.Close(null); OnNo.InvokeAsync(obj);} " ButtonStyle="ButtonStyle.Secondary" Style="width:Auto" />
+                </div>
+            </div>
+        </RadzenCard>
+            :
+        @<div>
+            <p style="margin:0 10px 10px 10px;">@text</p>
+            <div class="col-12">
+                <div style="float:right">
+                    <RadzenButton Text="Да" Click="() => ds.Close(obj)" Style="width:Auto" />
+                    <RadzenButton Text="Нет" Click="() => { ds.Close(null); OnNo.InvokeAsync(obj);} " ButtonStyle="ButtonStyle.Secondary" Style="width:Auto" />
+                </div>
+            </div>
+        </div>
+            );
+    }
+
+    public void Dispose()
+    {
+        dialogService.OnClose -= Close;
+    }
+}

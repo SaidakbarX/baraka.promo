@@ -1,0 +1,189 @@
+﻿@using baraka.promo.Models
+@using baraka.promo.Models.PromoModels.NewPromoModels
+@using baraka.promo.Services.Promo
+@using baraka.promo.Utils
+@inherits BaseRazorComponent
+@inject PromoService promoService
+
+
+
+<RadzenStack Gap="1rem" Orientation="Orientation.Horizontal">
+
+
+    <RadzenGrid PageSize="_pageSize" AllowPaging="true"
+                LoadData="LoadData"
+                Count="_total"
+                SelectionMode="DataGridSelectionMode.Single"
+                Page="@(e=> PageIndexChanged(e))"
+                Style="height:calc(100vh - 200px)"
+                RowSelect="@(args => RowSelect(args))" RowDoubleClick="@(args =>{ GoTo(!IsPromotions ? $"/promo/{args.Id}" : $"/promotion/{args.Id}"); })"
+                Data="@promos" TItem="PromoModel">
+        <Columns>
+            <RadzenGridColumn TItem="PromoModel" Property="@nameof(PromoModel.Name)" Title="Название" />
+
+            <RadzenGridColumn TItem="PromoModel" Property="MaxCount" Title="Макс. использование" Width="160px" />
+
+            <RadzenGridColumn TItem="PromoModel" Property="StartTime" Title="Время начала">
+                <Template Context="promoModel">
+                    @DateToDisplay(promoModel.StartTime, true)
+                </Template>
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="EndTime" Title="Время окончания">
+                <Template Context="promoModel">
+                    @DateToDisplay(promoModel.EndTime, true)
+                </Template>
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="MinOrderAmount" Title="Сумма заказа (мин.)">
+                <Template Context="promoModel">
+                    @MoneyToDisplay(promoModel.MinOrderAmount, divideTo100: true)
+                </Template>
+
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="MaxOrderAmount" Title="Сумма заказа (макс.)">
+                <Template Context="promoModel">
+                    @MoneyToDisplay(promoModel.MaxOrderAmount, divideTo100: true)
+                </Template>
+
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="OrderDiscount" Title="Скидка" Width="80px">
+                <Template Context="promoModel">
+                    @if (promoModel.OrderDiscount.HasValue)
+                    {
+                        @if (promoModel.View == PromoView.OrderDiscount)
+                        {
+                            <span>
+                                @promoModel.OrderDiscount%
+                            </span>
+                        }
+                        else if (promoModel.View == PromoView.OrderDiscountAmount)
+                        {
+                            <span>
+                                @MoneyToDisplay(promoModel.OrderDiscount)
+                            </span>
+                        }
+                        else
+                        {
+                            <span>
+                                @promoModel.OrderDiscount
+                            </span>
+                        }
+                    }
+                </Template>
+
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="@(nameof(PromoModel.View))" Title="Механика">
+                <Template Context="promoModel">
+                    @(EnumHelper<PromoView>.EnumToString(promoModel.View))
+                </Template>
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="View" Title="Аудитория">
+                <Template Context="data">
+                    @(EnumHelper<PromoType>.EnumToString(data.Type))
+                </Template>
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="IsActive" Title="Статус" Width="120px">
+                <Template Context="data">
+                    @if (data.IsActive)
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Success" Text="Активный" />
+                    }
+                    else
+                    {
+                        <RadzenBadge BadgeStyle="BadgeStyle.Danger" Text="Не активный" />
+                    }
+                </Template>
+            </RadzenGridColumn>
+
+            @if (!IsPromotions)
+            {
+                <RadzenGridColumn TItem="PromoModel" Property="TotalCount" Title="Общий" Width="80px" />
+                <RadzenGridColumn TItem="PromoModel" Property="TotalUsedCount" Title="Исползвино" Width="100px" />
+
+                <RadzenGridColumn TItem="PromoModel" Width="50px">
+                    <Template Context="data">
+                        @if (data.IsUnique)
+                        {
+                            <RadzenIcon Icon="open_in_browser" Style="cursor: pointer;" @onclick="()=>SendExcel(data.Id)"></RadzenIcon>
+                        }
+                    </Template>
+                </RadzenGridColumn>
+            }
+
+        </Columns>
+    </RadzenGrid>
+</RadzenStack>
+
+
+@code {
+
+    [Parameter]
+    public bool IsArchive { get; set; }
+    [Parameter]
+    public bool IsPromotions { get; set; }
+    [Parameter]
+    public EventCallback<PromoModel> SelectionChanged { get; set; }
+    [Parameter]
+    public string searchTextValue { get; set; } = "";
+    [Parameter]
+    public List<string> SelectedMachanicTypes { get; set; } = new();
+    [Parameter]
+    public List<string> SelectedAuditoryTypes { get; set; } = new();
+
+
+    List<PromoGroupModel> promoGroups = new();
+    PromoModel selectedItem = new();
+    List<PromoModel> promos = new List<PromoModel>();
+
+
+    RadzenDataGrid<PromoModel> grid;
+    protected override void OnInitialized()
+    {
+        _pageSize = 20;
+    }
+
+    public void RowSelect(PromoModel promo)
+    {
+        selectedItem = promo;
+        SelectionChanged.InvokeAsync(promo);
+    }
+    public void Load(bool isArchive, List<string> promoMachanics, List<string> promoAuditoria, string search, bool is_promotion)
+    {
+        IsArchive = isArchive;
+        SelectedMachanicTypes = promoMachanics;
+        SelectedAuditoryTypes = promoAuditoria;
+        searchTextValue = search;
+        IsPromotions = is_promotion;
+
+        LoadData();
+    }
+
+    protected override async void LoadData()
+    {
+        _loading = true;
+        var res = await promoService.PromoList(_pageSkip, _pageSize, searchTextValue, SelectedMachanicTypes, SelectedAuditoryTypes, IsArchive);
+        _total = res.Total;
+
+        if (!IsPromotions) promos = res.List.Where(x => !x.IsPromotion).ToList();
+        else promos = res.List.Where(x => x.IsPromotion).ToList();
+
+        StateHasChanged();
+        _loading = false;
+    }
+
+    async void SendExcel(long promo_id)
+    {
+        var excel_file = await promoService.GetExcelFile(promo_id);
+        if (excel_file != null && jsRuntime != null)
+        {
+            await jsRuntime.InvokeAsync<string>("saveAsFile", "Promos.xlsx", excel_file);
+        }
+    }
+}
+

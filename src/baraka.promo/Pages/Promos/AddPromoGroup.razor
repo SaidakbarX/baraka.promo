@@ -1,0 +1,103 @@
+﻿@using baraka.promo.Models.PromoModels.NewPromoModels
+@using baraka.promo.Services.PromGroup
+@inherits BaseRazorComponent
+@inject PromoGroupService promoGroupService
+@inject Radzen.DialogService dialogService
+
+<EditForm EditContext="editContext" Context="PromoGroupModel" OnValidSubmit="(e => Submit())">
+    <RadzenStack Gap="10px">
+        <div class="form-group flex-column d-flex">
+            <label>Название группы</label>
+            <RadzenTextBox @bind-Value="Model.Name" />
+            <ValidationMessage For="@(()=>Model.Name)"></ValidationMessage>
+        </div>
+        <div class="form-group flex-column d-flex">
+            <label>Описание группы</label>
+            <RadzenTextBox @bind-Value="Model.Description" />
+            <ValidationMessage For="@(()=>Model.Description)"></ValidationMessage>
+        </div>
+        @*
+        <div class="form-group flex-column d-flex">
+        <RadzenDropDownDataGrid @ref="grid" Chips="true" AllowFiltering="true"
+        FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive" AllowClear="true" @bind-Value=@values
+        Multiple="true" Placeholder="Select..."
+        PageSize="_pageSize"
+        Count="_total"
+
+        Data=@promoNames TextProperty="@nameof(PromoNameModel.Name)"
+        ValueProperty="@nameof(PromoNameModel.Id)" Name="DropDownDataGridMultiple">
+        <Columns>
+        <RadzenDropDownDataGridColumn Width="60px" Sortable="false">
+        <HeaderTemplate>
+        <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select all" }})"
+        TriState="false" TValue="bool"
+        Value="@(promoNames.Any(c => values != null && values.Contains(c.Id)))">
+        </RadzenCheckBox>
+        Change="@(args => values = args ? grid.View.Cast<PromoNameModel>().Select(c => c.Id) : values = new List<long>())" />
+        </HeaderTemplate>
+        <Template Context="data">
+        <RadzenCheckBox InputAttributes="@(new Dictionary<string,object>(){ { "aria-label", "select item" }})"
+        TriState="false"
+        Value="@(values != null && values.Contains(((PromoNameModel) data).Id))"
+        TValue="bool" Change=@(args => grid.SelectItem(data)) @onclick:stopPropagation />
+        </Template>
+        </RadzenDropDownDataGridColumn>
+        <RadzenDropDownDataGridColumn Property="@nameof(PromoNameModel.Name)" Title="CompanyName" Width="200px" />
+        <RadzenDropDownDataGridColumn Property="@nameof(PromoNameModel.Type)" Title="Type" Width="100px" />
+        <RadzenDropDownDataGridColumn Property="@nameof(PromoNameModel.View)" Title="View" Width="100px" />
+        </Columns>
+        </RadzenDropDownDataGrid>
+        </div>
+        *@
+        <div class="w-100 d-flex align-items-center justify-content-end pt-5" style="gap:10px;">
+            <RadzenButton Disabled="actionLoading" ButtonType="ButtonType.Submit" Text="@(Model.Id == 0 ? "Сохранять" : "Обновить")" Style="width: 150px" />
+            <RadzenButton Disabled="actionLoading" Click="@(e=>dialogService.Close(true))" ButtonStyle="ButtonStyle.Secondary" Text="Отмена" Style="width: 150px" />
+        </div>
+        <ObjectGraphDataAnnotationsValidator />
+    </RadzenStack>
+</EditForm>
+
+@code {
+    [Parameter]
+    public PromoGroup? PromoGroup { get; set; }
+
+    [Parameter]
+    public PromoGroupModel Model { get; set; } = new();
+
+    List<PromoNameModel> promoNames = new();
+    EditContext? editContext;
+    RadzenDropDownDataGrid<List<long>>? grid;
+
+    List<long> values = new();
+
+    protected override void OnInitialized()
+    {
+        editContext = new EditContext(Model ?? new());
+    }
+
+    async Task Submit()
+    {
+        actionLoading = true;
+        if (!string.IsNullOrEmpty(Model?.Name))
+        {
+            PromoGroupResult isOk = new();
+            if (Model.Id > 0 && (editContext != null && editContext.IsModified()))
+                isOk = await promoGroupService.AddUpdate(Model);
+            else if (Model.Id == 0)
+                isOk = await promoGroupService.AddUpdate(Model);
+            else
+            {
+                dialogService.Close(true);
+                return;
+            }
+            if (isOk.Id > 0)
+            {
+                dialogService.Close(true);
+                StateHasChanged();
+                if (PromoGroup != null)
+                    PromoGroup.Load();
+            }
+        }
+        actionLoading = false;
+    }
+}

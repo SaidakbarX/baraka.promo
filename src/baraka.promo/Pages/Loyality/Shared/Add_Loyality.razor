@@ -1,0 +1,108 @@
+﻿@page "/add_loyality"
+@page "/edit_loyality/{_CardHolderId}/{_CardId}"
+@using baraka.promo.Models.Cards
+@using baraka.promo.Models.Enums
+@using baraka.promo.Models.LoyaltyApiModels.Cardholders
+@using baraka.promo.Pages.Loyality.Shared.Add_LoyalityComponents
+@using baraka.promo.Services.Loyality
+@using baraka.promo.Utils
+
+@inherits BaseRazorComponent
+@inject LoyalityCardHolderService cardHolder
+
+<div style="display:flex; flex-direction:row; width:100%; gap:10px; padding:15px;">
+    <div style="flex: 1;">
+        <Add_CardHolder @ref="Add_CardHolder" UserId="@CardHolderId" Model="@CardholderModel" CardHolderId="GetCardHolderId" Update="@(IsUpdate || CardHolderId != Guid.Empty)" ReloadData="e=>ReloadData.InvokeAsync()" />
+    </div>
+    <div style="flex:1;">
+        <Add_Card @ref="Add_Card" UserId="@CardHolderId" CardId="@CardId" Model="@CardModel" InitCardNumber="@CardModel.Number" ReadOnly="(!string.IsNullOrEmpty(CardModel.Number))" Update="@(IsUpdate || CardId != Guid.Empty)" ReloadData="e=>ReloadData.InvokeAsync()" />
+    </div>
+</div>
+@if (CardHolderId != Guid.Empty && CardId != Guid.Empty)
+{
+    <div class="w-100 d-flex align-items-center justify-content-end" style="gap:10px; padding:15px;">
+        <RadzenButton Disabled="actionLoading" Click="Update" Text="Обновить" Style="width: 150px" />
+        <RadzenButton Click="@(e=>GoLoyalityReload())" ButtonStyle="ButtonStyle.Secondary" Text="Назад" Style="width: 150px" />
+    </div>
+}
+
+
+
+@code {
+    [Parameter]
+    public bool IsUpdate { get; set; }
+
+    public Add_CardHolder? Add_CardHolder;
+    public Add_Card? Add_Card;
+
+
+    public Guid CardHolderId => Guid.TryParse(_CardHolderId, out Guid result) ? result : Guid.Empty;
+    public Guid CardId => Guid.TryParse(_CardId, out Guid result) ? result : Guid.Empty;
+
+    [Parameter]
+    public string _CardHolderId { get; set; } = "";
+    [Parameter]
+    public string _CardId { get; set; } = "";
+
+    [Parameter]
+    public EventCallback ReloadData { get; set; }
+
+    CardModel CardModel = new();
+    CardholderModel CardholderModel = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (CardHolderId != Guid.Empty)
+        {
+            try
+            {
+                var res = await cardHolder.Get(CardHolderId);
+                if (res.Id != Guid.Empty)
+                {
+                    CardholderModel = new()
+                        {
+                            DateOfBirth = DateTime.TryParse(res.DateOfBirth, out DateTime date) ? date : null,
+                            Name = res.Name,
+                            Phone = res.Phone,
+                            Type = res.Type,
+                          Email = res.Email,
+                          Sex = res.Sex
+                        };
+                    CardModel = new()
+                        {
+                            Balance = res.Balance,
+                            Number = res.CardNumber,
+                            Type = res.CardType,
+                            UserId = CardHolderId
+                        };
+                    _CardId = res.CardId.ToString();
+                    StateHasChanged();
+                }
+            }
+            catch (Exception e)
+            {
+                ErrorNotify(e);
+            }
+        }
+    }
+    async Task Update()
+    {
+        if (Add_CardHolder != null)
+            await Add_CardHolder.Submit_AddCardHolder();
+
+        if (Add_Card != null)
+            await Add_Card.Submit_AddCard();
+
+    }
+
+    void GetCardHolderId(Guid holderId)
+    {
+        _CardHolderId = holderId.ToString();
+        StateHasChanged();
+    }
+    async void GoLoyalityReload()
+    {
+        await ReloadData.InvokeAsync();
+        GoTo("loyality");
+    }
+}

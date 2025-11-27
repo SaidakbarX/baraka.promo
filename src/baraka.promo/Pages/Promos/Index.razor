@@ -1,0 +1,407 @@
+﻿@attribute [Authorize]
+
+@using System.Transactions;
+@using Microsoft.EntityFrameworkCore;
+@using baraka.promo.Data.PromoEntities
+@using baraka.promo.Models;
+@using baraka.promo.Pages.Promos.PromoListPage
+@using baraka.promo.Pages.Users
+@using baraka.promo.Shared.NewFolder
+@using baraka.promo.Utils
+
+@inherits BaseRazorComponent
+@inject ApplicationDbContext _dbApp
+@inject NavigationManager NavigationManager
+@inject DialogService dialogService
+@inject NotificationService NotificationService
+@inject ILogger<Index> _logger
+
+<div style="display:flex; justify-content:space-between; align-items:center; background-color:lightgray; padding:4px 10px; width:100%;">
+
+    <div style="display:flex;  gap:10px; width:100%;">
+        <span class="header-text" style="display:flex; justify-content:center; align-items:center;">Промоакции</span>
+
+        <MyMenuItem Icon="note_add" Click="@Add" Text="Добавить"></MyMenuItem>
+        @if (selectedItem != null)
+        {
+            <MyMenuItem Icon="edit" Text="Редактировать" Click="@(args => { Edit(selectedItem); })"></MyMenuItem>
+
+            <MyMenuItem Icon="delete" Text="Удалить"
+                        Click="@(args => confirm.Show("Подтверждать", "Подтвердите удаление", selectedItem))"></MyMenuItem>
+        }
+
+        <div style="flex:1; display:flex; justify-content:end; column-gap: 10px; align-items: center; padding-right: 10px;">
+
+
+            <RadzenLabel>Архив</RadzenLabel>
+            <RadzenSwitch @bind-Value="@archieve" Change=@(args => OnArchieveChange(args)) />
+            <RadzenLabel>Механика</RadzenLabel>
+            <RadzenDropDown Multiple="true" @bind-Value="@SelectedMachanicTypes" Data="@MachanicTypes" Change="LoadData" />
+
+            <RadzenLabel>Аудитория</RadzenLabel>
+            <RadzenDropDown Multiple="true" @bind-Value="@SelectedAuditoryTypes" Data="@AuditoryTypes" Change="LoadData" />
+
+            <RadzenTextBox @bind-Value="@searchTextValue" Placeholder="Поиск текста"></RadzenTextBox>
+
+            <RadzenButton Click="LoadData" Text="Поиск"></RadzenButton>
+        </div>
+    </div>
+</div>
+
+@*
+<div>
+    <RadzenMenu Style="display:flex; justify-content:space-between; background-color:lightgray;" @attributes="@(new Dictionary<string, object>() { { "class", "header-menu-btn-toolbar" } })">
+        <div style="display:flex; justify-content:center; align-items:center; background-color:lightgray; padding-left:10px;">
+        </div>
+        <div style="flex:1; display:flex; justify-content:end; column-gap: 10px; align-items: center; padding-right: 10px;">
+
+
+            <RadzenLabel>Архив</RadzenLabel>
+            <RadzenSwitch @bind-Value="@archieve" Change=@(args => OnArchieveChange(args)) />
+            <RadzenLabel>Механика</RadzenLabel>
+            <RadzenDropDown Multiple="true" @bind-Value="@SelectedMachanicTypes" Data="@MachanicTypes" Change="LoadData" />
+
+            <RadzenLabel>Аудитория</RadzenLabel>
+            <RadzenDropDown Multiple="true" @bind-Value="@SelectedAuditoryTypes" Data="@AuditoryTypes" Change="LoadData" />
+
+            <RadzenTextBox @bind-Value="@searchTextValue" Placeholder="Поиск текста"></RadzenTextBox>
+
+            <RadzenButton Click="LoadData" Text="Поиск"></RadzenButton>
+        </div>
+
+    </RadzenMenu>
+</div> *@
+
+<div style="display:flex; justify-content:space-between; width:100%;">
+    <RadzenTabs Change="TabChanged" SelectedIndex="@selectedTab" RenderMode="TabRenderMode.Client">
+        <Tabs>
+
+            <RadzenTabsItem Text="Сгруппированное" Style="padding:0px;">
+                <PromoGroup @ref="PromoGroup" ListPage="true" SelectionChanged="RowSelect"
+                            IsArchive="@archieve"
+                            FromGroupped="true"
+                            SelectedAuditoryTypes="@SelectedAuditoryTypes"
+                            SelectedMachanicTypes="@SelectedMachanicTypes" />
+            </RadzenTabsItem>
+
+            <RadzenTabsItem Text="Список" Style="padding:0px;">
+
+                <GroupedPromoList @ref="groupedPromoList" IsArchive="@archieve"
+                                  SelectionChanged="RowSelect"
+                                  searchTextValue="@searchTextValue"
+                                  FromGroupped="true"
+                                  NotGroupped="true"
+                                  SelectedAuditoryTypes="@SelectedAuditoryTypes"
+                                  SelectedMachanicTypes="@SelectedMachanicTypes" />
+
+            </RadzenTabsItem>
+
+
+            @*
+            <RadzenTabsItem Text="Old">
+
+            <RadzenGrid Count="@_total" Data="@Listpromo"
+            AllowSorting="false"
+            TItem="PromoModel" @ref="grid"
+            Page="@(e=> PromoListLoad(e))"
+            AllowFiltering="false" AllowPaging="true"
+            PageSize="@_pageSize"
+            Style="height:calc(100vh - 160px)"
+            Value="@selectedItem"
+            RowSelect="@(args => RowSelect(args))"
+            RowDoubleClick="@(args =>{ GoTo($"/promo/{args.Id}"); })">
+            <Columns>
+            <RadzenGridColumn TItem="PromoModel" Property="Name" Title="Название промо" />
+            <RadzenGridColumn TItem="PromoModel" Property="MaxCount" Title="Максимальное количество" Width="90px" />
+            <RadzenGridColumn TItem="PromoModel" Property="StartTime" Title="Время начала" />
+            <RadzenGridColumn TItem="PromoModel" Property="EndTime" Title="Время окончания" />
+            <RadzenGridColumn TItem="PromoModel" Property="MinOrderAmount" Title="Минимальная сумма заказа" />
+            <RadzenGridColumn TItem="PromoModel" Property="MaxOrderAmount" Title="Максимальная сумма заказа" />
+            <RadzenGridColumn TItem="PromoModel" Property="OrderDiscount" Title="Скидка на заказ" />
+            <RadzenGridColumn TItem="PromoModel" Property="View" Title="Механика">
+            <Template Context="data">
+            @{
+            string view = "";
+            switch (data.View)
+            {
+            case PromoView.FreeDelivery:
+            view = "Бесплатная доставка";
+            break;
+            case PromoView.FreeProduct:
+            view = "Бесплатный продукт";
+            break;
+            case PromoView.OrderDiscount:
+            view = "Скидка на заказ";
+            break;
+            case PromoView.ProductDiscount:
+            view = "Скидка на продукт";
+            break;
+            case PromoView.PromotionalProduct:
+            view = "Акционное блюда";
+            break;
+            default:
+            view = "Скидка на заказ на сумму";
+            break;
+            }
+
+            @view
+            }
+            </Template>
+            </RadzenGridColumn>
+            <RadzenGridColumn TItem="PromoModel" Property="Type" Title="Аудитория" Width="100px">
+            <Template Context="data">
+            @{
+            string type = "";
+            switch (data.Type)
+            {
+            case PromoType.All:
+            type = "Все";
+            break;
+            case PromoType.Personal:
+            type = "Персональный";
+            break;
+            default:
+            type = "Сегмент";
+            break;
+            }
+
+            @type
+            }
+            </Template>
+            </RadzenGridColumn>
+            <RadzenGridColumn TItem="PromoModel" Property="TotalCount" Title="Общее количество" />
+
+            <RadzenGridColumn TItem="PromoModel" Property="IsActive" Title="Статус" Width="90px">
+            <Template Context="data">
+            @(data.IsActive == true ? "Активный" : "Не активен")
+            </Template>
+            </RadzenGridColumn>
+
+            <RadzenGridColumn TItem="PromoModel" Property="TotalUsedCount" Title="Количество использованных" />
+            </Columns>
+            </RadzenGrid>
+            </RadzenTabsItem> *@
+
+        </Tabs>
+    </RadzenTabs>
+
+
+</div>
+
+
+
+<Confirm TItem="PromoModel" @ref="confirm" OnConfirm="@OnConfirmDelete" />
+
+@code {
+    int selectedTab = 0;
+    int activeTab = 0;
+
+    RadzenGrid<PromoModel>? grid;
+    Confirm<PromoModel>? confirm;
+    PromoGroup? PromoGroup;
+    GroupedPromoList? groupedPromoList;
+    List<PromoModel> Listpromo = new List<PromoModel>();
+
+    int TotalCount;
+    PromoModel selectedItem;
+    bool archieve = false;
+
+    List<string> MachanicTypes = new();
+    List<string> AuditoryTypes = new();
+
+    List<string> SelectedMachanicTypes = new();
+    List<string> SelectedAuditoryTypes = new();
+
+    protected override async void OnInitialized()
+    {
+        _pageSize = 5;
+        MachanicTypes = EnumHelper<PromoView>.GetEnumDescriptions();
+        AuditoryTypes = EnumHelper<PromoType>.GetEnumDescriptions();
+        // SelectedMachanicTypes = MachanicTypes;
+        // SelectedAuditoryTypes = AuditoryTypes;
+
+        await LoadData();
+    }
+    public void RowSelect(PromoModel seletedPromo)
+    {
+        selectedItem = seletedPromo;
+    }
+
+    void OnArchieveChange(bool args)
+    {
+        archieve = args;
+        if (selectedTab == 0)
+        {
+            if (PromoGroup != null)
+                PromoGroup.Load(args);
+
+        }
+        else if (selectedTab == 2)
+        {
+            Reload();
+        }
+        else
+        {
+            Reload();
+        }
+    }
+
+    private async Task OnConfirmDelete(PromoModel obj)
+    {
+        try
+        {
+            var promo = _dbApp.Promos.FirstOrDefault(a => a.Name == obj.Name);
+            if (promo != null)
+            {
+                promo.IsDeleted = true;
+                await _dbApp.SaveChangesAsync();
+            }
+
+            selectedItem = null;
+
+        }
+        catch (Exception e)
+        {
+            _logger.LogError(e, e.Message);
+            NotificationService.Notify(new NotificationMessage { Severity = NotificationSeverity.Error, Summary = "Error", Detail = $"{e.Message}", Duration = 4000 });
+        }
+
+        Reload();
+    }
+
+    private async void Reload()
+    {
+
+        await LoadData();
+        if (grid != null)
+        {
+            await grid.Reload();
+
+        }
+        StateHasChanged();
+    }
+
+    void ItemClose(dynamic result)
+    {
+        dialogService.OnClose -= ItemClose;
+        if (result != null && grid != null)
+        {
+            grid.Reload();
+        }
+        StateHasChanged();
+    }
+
+
+    private async Task PromoListLoad(PagerEventArgs dataArgs)
+    {
+
+        _pageSkip = dataArgs.Skip;
+        _pageSize = dataArgs.Top;
+        await LoadPromoTable();
+    }
+
+    public async void TabChanged(int tab)
+    {
+        selectedTab = tab;
+        await LoadData();
+    }
+
+    private async Task LoadPromoTable()
+    {
+        var clients = _dbApp.PromoClients.Where(a => a.TimeOfUse.HasValue).ToList();
+        var promoQuery = _dbApp.Promos.Where(w => !w.IsDeleted);
+
+        if (archieve)
+            promoQuery = promoQuery.Where(w => (!w.IsActive) || (w.EndTime.HasValue && w.EndTime <= DateTime.Now));
+        else
+            promoQuery = promoQuery.Where(w => (w.IsActive) || (!w.EndTime.HasValue || w.EndTime > DateTime.Now));
+
+        if (!string.IsNullOrEmpty(searchTextValue))
+            promoQuery = promoQuery.Where(w => w.Name.Contains(searchTextValue));
+
+        if (SelectedAuditoryTypes.Count > 0)
+        {
+            var enumPromoAuditoria = EnumHelper<PromoType>.ListToEnumList(SelectedAuditoryTypes);
+            promoQuery = promoQuery.Where(w => enumPromoAuditoria.Contains(w.Type));
+        }
+
+        if (SelectedMachanicTypes.Count > 0)
+        {
+            var enumMachanicTypes = EnumHelper<PromoView>.ListToEnumList(SelectedMachanicTypes);
+            promoQuery = promoQuery.Where(w => enumMachanicTypes.Contains(w.View));
+        }
+        _total = promoQuery.Count();
+
+        promoQuery = promoQuery.OrderByDescending(o => o.StartTime);
+
+
+        Listpromo = promoQuery.Skip(_pageSkip).Take(_pageSize).
+            Select(a => new PromoModel
+                {
+                    Id = a.Id,
+                    Name = a.Name,
+                    MaxCount = a.MaxCount,
+                    StartTime = a.StartTime,
+                    EndTime = a.EndTime,
+                    MinOrderAmount = a.MinOrderAmount / 100,
+                    MaxOrderAmount = a.MaxOrderAmount / 100,
+                    OrderDiscount = a.OrderDiscount,
+                    View = a.View,
+                    Type = a.Type,
+                    IsActive = a.IsActive,
+                    TotalCount = a.TotalCount,
+                }).ToList();
+
+
+        Listpromo.ForEach(f => f.TotalUsedCount = clients.Count(b => b.PromoId == f.Id));
+        StateHasChanged();
+        await Task.Delay(100);
+
+
+        StateHasChanged();
+
+    }
+
+
+    private async Task LoadData()
+    {
+
+        if (selectedTab == 0)
+        {
+            if (PromoGroup != null)
+                PromoGroup.Load(archieve, SelectedMachanicTypes, SelectedAuditoryTypes, searchTextValue);
+
+        }
+        else if (selectedTab == 1)
+        {
+            if (groupedPromoList != null)
+            {
+                groupedPromoList.Load(archieve, SelectedMachanicTypes, SelectedAuditoryTypes, searchTextValue);
+            }
+        }
+        else if (selectedTab == 2)
+        {
+            await LoadPromoTable();
+            StateHasChanged();
+        }
+        else if (PromoGroup != null)
+            PromoGroup.Load(archieve, SelectedMachanicTypes, SelectedAuditoryTypes, searchTextValue);
+
+    }
+
+    private async void Edit(PromoModel item)
+    {
+        //dialogService.OnClose += ItemClose;
+        //dialogService.Open<EditPromo>("EditPromo",
+        //    new Dictionary<string, object>() { { "Model", Newtonsoft.Json.JsonConvert.SerializeObject(item) } },
+        //    new DialogOptions() { Width = "600px", Height = "420px" });
+        //await grid.Reload();
+
+        NavigationManager.NavigateTo($"/promo/{item.Id}");
+    }
+
+    public void Add()
+    {
+        NavigationManager.NavigateTo("/promo");
+    }
+}

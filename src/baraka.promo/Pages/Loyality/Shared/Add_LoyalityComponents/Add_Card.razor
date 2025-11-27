@@ -1,0 +1,377 @@
+﻿@using baraka.promo.Models.Cards
+@using baraka.promo.Models.Enums
+@using baraka.promo.Models.LoyaltyApiModels.Cardholders
+@using baraka.promo.Models.LoyaltyApiModels.LoyalityTypeModels
+@using baraka.promo.Services.Loyality
+@using baraka.promo.Utils
+@using Newtonsoft.Json
+@inherits BaseRazorComponent
+@inject LoyalityCardHolderService cardHolder
+@inject LoyalitySettingService loyalitySettingService
+
+@if (UserId != Guid.Empty)
+{
+    <RadzenCard Variant="Variant.Filled">
+        @if (!ReadOnly)
+        {
+            <h4>Добавление карта лояльности клиента</h4>
+        }
+        else
+        {
+            <h4>Карта лояльности</h4>
+        }
+
+        <EditForm EditContext="editContext" Context="CardModel" OnValidSubmit="(e => AddCard())">
+            <RadzenStack Gap="10px">
+                <div class="form-group flex-column d-flex">
+                    <label>Номер карты</label>
+                    <div class="d-flex flex-row" style="gap:10px;">
+                        <InputMask Disabled="CardId != Guid.Empty" DisplayName="" Style="flex:1;" @bind-Value="Model.Number" Placeholder="7777 ____ ____ ____" Mask="7777 0000 0000 0000" />
+                        @if (CardId == Guid.Empty)
+                        {
+                            <RadzenButton Disabled="actionLoading" Text="Генерировать" Click="@(e => GenerateCardNumber(e))" />
+                        }
+                    </div>
+                    <ValidationMessage For="@(() => Model.Number)"></ValidationMessage>
+                </div>
+
+                <div class="form-group flex-column d-flex">
+                    <label>Тип карты</label>
+                    <RadzenDropDown Disabled="actionLoading"
+                                    @bind-Value="SelectedCardType"
+                                    Data="CardTypes"
+                                    Name="DropDownBindValue"
+                                    Change="@OnCardTypeChanged">
+                        <Template>
+                            <RadzenBadge BadgeStyle="@BadgeStyle((context))" Variant="Variant.Flat">
+                                <div class="w-100 justify-content-center align-center">
+                                    @((context as string))
+                                </div>
+                            </RadzenBadge>
+                        </Template>
+                        <ValueTemplate>
+                            <RadzenBadge BadgeStyle="@BadgeStyle((context))" Variant="Variant.Flat">
+                                <div class="w-100 justify-content-center align-center">
+                                    @((context as string))
+                                </div>
+                            </RadzenBadge>
+                        </ValueTemplate>
+                    </RadzenDropDown>
+                    <div class="validation-message">@CardTypeError</div>
+                </div>
+
+                @if (currentCashbackInfo != null)
+                {
+                    <RadzenCard Style="background-color: #f0f7ff; padding: 15px; margin: 10px 0;">
+                        <RadzenStack Gap="10px">
+
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <RadzenIcon Icon="info" Style="color: #0078d4; font-size: 20px;" />
+                                <span style="font-weight: bold; font-size: 18px; display: flex; align-items: center;">
+                                    Информация о карте
+                                </span>
+                            </div>
+
+
+
+                            <div style="display: flex; gap: 20px; flex-wrap: wrap;">
+
+                                @if (!string.IsNullOrEmpty(currentCashbackInfo.ImgUrlLight) ||
+                                                        !string.IsNullOrEmpty(currentCashbackInfo.ImgUrlBlack))
+                                {
+                                    <div style="flex: 2; min-width: 300px;">
+                                        <RadzenText TextStyle="TextStyle.Body2" Style="color: #666; margin-bottom: 10px;">
+                                            Дизайн карты:
+                                        </RadzenText>
+
+                                        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                                            @if (!string.IsNullOrEmpty(currentCashbackInfo.ImgUrlLight))
+                                            {
+                                                <div>
+                                                    <RadzenImage Path="@GetImagePath(currentCashbackInfo.ImgUrlLight)"
+                                                                 Style="width: 200px; height: 120px; object-fit: cover;
+                                                                    border-radius: 8px; border: 1px solid #ddd;" />
+                                                </div>
+                                            }
+
+                                            @if (!string.IsNullOrEmpty(currentCashbackInfo.ImgUrlBlack))
+                                            {
+                                                <div>
+                                                    <RadzenImage Path="@GetImagePath(currentCashbackInfo.ImgUrlBlack)"
+                                                                 Style="width: 200px; height: 120px; object-fit: cover;
+                                                                    border-radius: 8px; border: 1px solid #ddd;
+                                                                    background-color: #1a1a1a;" />
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                }
+
+                                <div style="flex: 1; min-width: 200px;">
+                                    <RadzenText TextStyle="TextStyle.Body2" Style="color: #666;">
+                                        Процент кэшбэка:
+                                    </RadzenText>
+
+                                    <RadzenText TextStyle="TextStyle.H5" Style="color: #0078d4; font-weight: bold;">
+                                        @currentCashbackInfo.Value%
+                                    </RadzenText>
+                                </div>
+
+                            </div>
+
+                        </RadzenStack>
+                    </RadzenCard>
+
+                }
+
+                <div class="form-group flex-column d-flex" style="gap:10px;">
+                    <label>Баланс</label>
+                    @if (CardId == Guid.Empty)
+                    {
+                        <div class="w-100 d-flex flex-row" style="gap:10px;">
+                            <RadzenButton Style="flex:1;" Text="+5 000 UZS" Click="@(e => SetCardBalance(5000))" />
+                            <RadzenButton Style="flex:1;" Text="+10 000 UZS" Click="@(e => SetCardBalance(10000))" />
+                            <RadzenButton Style="flex:1;" Text="+15 000 UZS" Click="@(e => SetCardBalance(15000))" />
+                            <RadzenButton Style="flex:1;" Text="+20 000 UZS" Click="@(e => SetCardBalance(20000))" />
+                        </div>
+                    }
+                    <RadzenNumeric ReadOnly="CardId != Guid.Empty" Disabled="@(actionLoading || CardId != Guid.Empty)" ShowUpDown="false" Min="0" @bind-Value="Model.Balance" />
+                    <ValidationMessage For="@(() => Model.Balance)"></ValidationMessage>
+                </div>
+
+                @if (CardId == Guid.Empty)
+                {
+                    <div class="w-100 d-flex align-items-center justify-content-end pt-5" style="gap:10px;">
+                        <RadzenButton Disabled="actionLoading" ButtonType="ButtonType.Submit" Text="Сохранять" Style="width: 150px" />
+                        <RadzenButton Click="@(e => GoLoyalityReload())" ButtonStyle="ButtonStyle.Secondary" Text="Отмена" Style="width: 150px" />
+                    </div>
+                }
+                <ObjectGraphDataAnnotationsValidator />
+            </RadzenStack>
+        </EditForm>
+    </RadzenCard>
+}
+
+@code {
+    [Parameter]
+    public EventCallback ReloadData { get; set; }
+    [Parameter]
+    public bool Update { get; set; }
+    [Parameter]
+    public Guid UserId { get; set; }
+    [Parameter]
+    public Guid CardId { get; set; }
+    [Parameter]
+    public string InitCardNumber { get; set; } = "";
+    [Parameter]
+    public CardModel Model { get; set; } = new();
+    [Parameter]
+    public bool ReadOnly { get; set; } = false;
+
+    EditContext editContext;
+    List<string> CardTypes = new();
+    string SelectedCardType = "";
+    string CardTypeError = "";
+    CashbackModel? currentCashbackInfo = null;
+
+    protected override void OnInitialized()
+    {
+        editContext = new(Model);
+        CardTypes = EnumHelper<CardType>.GetEnumDescriptions();
+        if (CardTypes.Count == 1)
+            SelectedCardType = CardTypes.FirstOrDefault() ?? "";
+        else
+            SelectedCardType = CardTypes.FirstOrDefault(f => f == EnumHelper<CardType>.EnumToString(Model.Type)) ?? CardTypes.FirstOrDefault() ?? "";
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && !string.IsNullOrEmpty(SelectedCardType))
+        {
+            await LoadCardTypeInfo();
+            StateHasChanged();
+        }
+    }
+
+    async Task OnCardTypeChanged()
+    {
+        await LoadCardTypeInfo();
+    }
+
+    async Task LoadCardTypeInfo()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(SelectedCardType))
+            {
+                currentCashbackInfo = null;
+                return;
+            }
+
+            var cardType = EnumHelper<CardType>.StringToEnum(SelectedCardType);
+            var cashbackSettings = await loyalitySettingService.GetFirstByType(LoyalityTypeKey.CASHBACK);
+
+            if (cashbackSettings != null && !string.IsNullOrEmpty(cashbackSettings.ValueInfo))
+            {
+                var allCashbacks = JsonConvert.DeserializeObject<List<CashbackModel>>(cashbackSettings.ValueInfo);
+                currentCashbackInfo = allCashbacks?.FirstOrDefault(c => c.CardType == cardType);
+            }
+            else
+            {
+                currentCashbackInfo = null;
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorNotify(ex);
+            currentCashbackInfo = null;
+        }
+    }
+
+    string GetImagePath(string? imgUrl)
+    {
+        if (string.IsNullOrEmpty(imgUrl)) return "";
+        if (imgUrl.StartsWith("http")) return imgUrl;
+        return $"/{imgUrl.TrimStart('/')}";
+    }
+
+    async Task<bool> AddCard()
+    {
+        bool state = false;
+        CardTypeError = "";
+        if (string.IsNullOrEmpty(SelectedCardType))
+        {
+            CardTypeError = "Пожалуйста, выберите тип карты";
+            return state;
+        }
+
+        var tempCard = Model.Number.Replace(" ", "");
+        if (string.IsNullOrEmpty(tempCard) || tempCard.Length != 16)
+        {
+            Model.Number.Replace(" ", "");
+            Notify(string.IsNullOrEmpty(Model.Number) ? "Пожалуйста, заполните все обязательные поля" : "Размер номера карты должен состоять из 16 букв.");
+            return state;
+        }
+        if (CardId != Guid.Empty && InitCardNumber == tempCard)
+        {
+        }
+        else if (!await CheckCardNumber(tempCard))
+        {
+            Notify("Повторяющийся номер карты. Пожалуйста, введите повторно или сгенерируйте номер карты");
+            return state;
+        }
+        try
+        {
+            actionLoading = true;
+            Model.Type = EnumHelper<CardType>.StringToEnum(SelectedCardType);
+            Model.UserId = UserId;
+            Model.Number = Model.Number.Replace(" ", "");
+            if (CardId == Guid.Empty)
+            {
+                var res = await cardHolder.AddCard(Model);
+                state = res.Id != Guid.Empty;
+                await ReloadData.InvokeAsync();
+                GoTo("loyality");
+            }
+            else
+            {
+                var res = await cardHolder.EditCard(CardId, Model);
+                state = res;
+                await ReloadData.InvokeAsync();
+            }
+        }
+        catch (Exception e)
+        {
+            ErrorNotify(e);
+        }
+        finally
+        {
+            actionLoading = false;
+            StateHasChanged();
+        }
+        return state;
+    }
+
+    async void GoLoyalityReload()
+    {
+        await ReloadData.InvokeAsync();
+        GoTo("loyality");
+    }
+
+    async void GenerateCardNumber(MouseEventArgs e)
+    {
+        bool isNotFine = true;
+        Model.Number = StringHelper.GenerateCrdNumber();
+        try
+        {
+            int count = 0;
+            while (isNotFine)
+            {
+                count++;
+                isNotFine = !await CheckCardNumber(Model.Number);
+                if (isNotFine)
+                {
+                    if (count == 5)
+                    {
+                        ErrorNotify("Не удалось создать уникальный номер карты. Повторите попытку.");
+                        isNotFine = false;
+                        break;
+                    }
+                    else
+                    {
+                        Model.Number = StringHelper.GenerateCrdNumber();
+                        Notify("Сгенерировано новый номер карты");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            ErrorNotify(ex);
+        }
+        StateHasChanged();
+    }
+
+    public async Task Submit_AddCard()
+    {
+        if (editContext != null)
+        {
+            if (editContext.Validate() && editContext.IsModified())
+            {
+                bool res = await AddCard();
+                if (res) editContext = new(Model);
+            }
+            else
+            {
+                string error = string.Join(", ", editContext.GetValidationMessages());
+                if (!string.IsNullOrEmpty(error))
+                    Notify(error);
+            }
+        }
+    }
+
+    async Task<bool> CheckCardNumber(string cardNumber)
+    {
+        try
+        {
+            return await cardHolder.CheckCardNumber(cardNumber);
+        }
+        catch (Exception e)
+        {
+            ErrorNotify(e);
+        }
+        return false;
+    }
+
+    void SetCardBalance(decimal money)
+    {
+        Model.Balance += money;
+    }
+
+    BadgeStyle BadgeStyle(string cardType)
+    {
+        return cardType == EnumHelper<CardType>.EnumToString(CardType.Common) ? Radzen.BadgeStyle.Light :
+               cardType == EnumHelper<CardType>.EnumToString(CardType.Silver) ? Radzen.BadgeStyle.Info :
+               Radzen.BadgeStyle.Warning;
+    }
+}

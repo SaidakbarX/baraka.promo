@@ -1,0 +1,294 @@
+﻿@page "/loyality_settings"
+@using baraka.promo.Models.Enums
+@using baraka.promo.Models.LoyaltyApiModels.LoyalityTypeModels
+@using baraka.promo.Services.Loyality
+@using baraka.promo.Utils
+@using Newtonsoft.Json
+@using Microsoft.AspNetCore.Components.Forms
+@using baraka.promo.Data.Loyalty
+@inherits BaseRazorComponent
+@inject LoyalitySettingService loyalitySettingService
+@inject IWebHostEnvironment webHostEnvironment
+@inject ILogger<LoyalitySetting> logger
+
+<div style="display:flex; justify-content:space-between; align-items:center; background-color:lightgray; padding:10px; width:100%; margin-bottom:10px;">
+    <div style="display:flex; gap:10px; align-items:center;">
+        <RadzenDropDown @bind-Value="selectedLoyalityType"
+                        Data="@loyalityTypeOptions"
+                        TextProperty="Text"
+                        ValueProperty="Value"
+                        Style="width:200px;"
+                        Change="@OnLoyalityTypeChanged"
+                        Placeholder="Тип лояльности" />
+
+        <RadzenButton Icon="add_circle"
+                      Text="Добавить"
+                      Click="@(() => GoTo($"add_loyality_setting/{selectedLoyalityType}"))"
+                      ButtonStyle="ButtonStyle.Dark"
+                      Size="ButtonSize.Small"
+                      Disabled="@(selectedLoyalityType == null)" />
+        @if (selectedItem != null)
+        {
+            <RadzenButton Icon="edit"
+                          Text="Редактировать"
+                          Click="@(() => GoTo($"edit_loyality_setting/{selectedLoyalityType}/{selectedItem.Id}"))"
+                          ButtonStyle="ButtonStyle.Dark"
+                          Size="ButtonSize.Small" />
+            <RadzenButton Icon="delete"
+                          Text="Удалить"
+                          Click="@(() => confirmDelete!.Show("Подтверждение", $"Удалить настройку ?", selectedItem))"
+                          ButtonStyle="ButtonStyle.Danger"
+                          Size="ButtonSize.Small" />
+        }
+    </div>
+</div>
+
+<RadzenGrid Data="@loyalityTypes"
+            TItem="LoyalityTypeDisplayModel"
+            RowDoubleClick="@OnDoubleClick"
+            RowSelect="@OnSelect"
+            AllowPaging="true"
+            AllowSorting="true">
+    <Columns>
+
+        <RadzenGridColumn TItem="LoyalityTypeDisplayModel" Property="Type" Title="Тип лояльности" />
+
+        <RadzenGridColumn TItem="LoyalityTypeDisplayModel" Property="CardType" Title="Тип карты">
+            <Template Context="item">
+                @if (item.CardType.HasValue)
+                {
+                    <RadzenBadge BadgeStyle="@GetBadgeStyle(item.CardType.Value)" Variant="Variant.Flat">
+                        @(EnumHelper<CardType>.EnumToString(item.CardType.Value))
+                    </RadzenBadge>
+                }
+                else
+                {
+                    <span>-</span>
+                }
+            </Template>
+        </RadzenGridColumn>
+
+        <RadzenGridColumn TItem="LoyalityTypeDisplayModel" Property="Value" Title="Значение">
+            <Template Context="item">
+                @if (item.Value.HasValue)
+                {
+                    @item.Value.Value
+                    @("%")
+                }
+                else
+                {
+                    <span>-</span>
+                }
+            </Template>
+        </RadzenGridColumn>
+
+        <RadzenGridColumn TItem="LoyalityTypeDisplayModel" Property="IsActive" Title="Активный">
+            <Template Context="item">
+                <RadzenBadge BadgeStyle="@(item.IsActive? BadgeStyle.Success: BadgeStyle.Danger)" Variant="Variant.Flat">
+                    @(item.IsActive ? "Active" : "NotActive")
+                </RadzenBadge>
+            </Template>
+        </RadzenGridColumn>
+    </Columns>
+</RadzenGrid>
+
+<Confirm TItem="LoyalityTypeDisplayModel" @ref="confirmDelete" OnConfirm="OnConfirmDelete" />
+
+@code {
+    List<LoyalityTypeDisplayModel> loyalityTypes = new();
+    LoyalityTypeDisplayModel? selectedItem;
+    Confirm<LoyalityTypeDisplayModel>? confirmDelete;
+
+    LoyalityTypeKey? selectedLoyalityType = LoyalityTypeKey.CASHBACK;
+
+    List<LoyalityTypeOption> loyalityTypeOptions = new();
+
+    public class LoyalityTypeOption
+    {
+        public LoyalityTypeKey Value { get; set; } = LoyalityTypeKey.CASHBACK;
+        public string Text { get; set; } = "";
+    }
+
+    public class LoyalityTypeDisplayModel
+    {
+        public int Id { get; set; }
+        public string Type { get; set; } = "";
+        public CardType? CardType { get; set; }
+        public decimal? Value { get; set; }
+        public bool IsActive { get; set; }
+        public string? ValueInfo { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        loyalityTypeOptions = new List<LoyalityTypeOption>
+    {
+        new LoyalityTypeOption
+        {
+            Value = LoyalityTypeKey.CASHBACK,
+            Text = "CASHBACK"
+        }
+    };
+
+        selectedLoyalityType = LoyalityTypeKey.CASHBACK;
+
+        await LoadDataAsync();
+    }
+
+
+    async Task OnLoyalityTypeChanged()
+    {
+        selectedItem = null;
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        try
+        {
+            _loading = true;
+            loyalityTypes.Clear();
+
+            if (selectedLoyalityType == null)
+            {
+                return;
+            }
+
+            var allSettings = (await loyalitySettingService
+                                    .GetAllByType(selectedLoyalityType.Value))
+                                    .Where(x => x.IsActive)
+                                    .ToList();
+
+            foreach (var setting in allSettings)
+            {
+                if (selectedLoyalityType == LoyalityTypeKey.CASHBACK
+                    && !string.IsNullOrEmpty(setting.ValueInfo))
+                {
+                    var cashbacks = JsonConvert.DeserializeObject<List<CashbackModel>>(setting.ValueInfo) ?? new();
+                    foreach (var cb in cashbacks)
+                    {
+                        loyalityTypes.Add(new LoyalityTypeDisplayModel
+                        {
+                            Id = setting.Id,
+                            Type = setting.Type,
+                            CardType = cb.CardType,
+                            Value = cb.Value,
+                            IsActive = setting.IsActive,
+                            ValueInfo = setting.ValueInfo
+                        });
+                    }
+                }
+                else
+                {
+                    loyalityTypes.Add(new LoyalityTypeDisplayModel
+                    {
+                        Id = setting.Id,
+                        Type = setting.Type,
+                        CardType = null,
+                        Value = null,
+                        IsActive = setting.IsActive,
+                        ValueInfo = setting.ValueInfo
+                    });
+                }
+            }
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+
+    void OnSelect(LoyalityTypeDisplayModel model)
+    {
+        selectedItem = model;
+    }
+
+    async Task OnConfirmDelete(LoyalityTypeDisplayModel item)
+    {
+        try
+        {
+            if (selectedLoyalityType == LoyalityTypeKey.CASHBACK && item.CardType.HasValue)
+            {
+                var setting = await loyalitySettingService.GetById(item.Id);
+                if (setting != null && !string.IsNullOrEmpty(setting.ValueInfo))
+                {
+                    var cashbacks = JsonConvert.DeserializeObject<List<CashbackModel>>(setting.ValueInfo) ?? new();
+                    var toRemove = cashbacks.FirstOrDefault(c => c.CardType == item.CardType.Value);
+                    if (toRemove != null)
+                    {
+                        if (!string.IsNullOrEmpty(toRemove.ImgUrlBlack))
+                            DeleteFileFromServer(toRemove.ImgUrlBlack);
+                        if (!string.IsNullOrEmpty(toRemove.ImgUrlLight))
+                            DeleteFileFromServer(toRemove.ImgUrlLight);
+
+                        cashbacks.Remove(toRemove);
+
+                        if (cashbacks.Count == 0)
+                        {
+                            await loyalitySettingService.Delete(item.Id);
+                        }
+                        else
+                        {
+                            var json = JsonConvert.SerializeObject(cashbacks);
+                            await loyalitySettingService.UpdateValueInfo(item.Id, json);
+                        }
+                    }
+                }
+            }
+            else
+            {
+                await loyalitySettingService.SetInactive(item.Id);
+
+            }
+
+            selectedItem = null;
+            Notify("Настройки успешно удалены");
+            await LoadDataAsync();
+        }
+        catch (Exception ex)
+        {
+            ErrorNotify(ex);
+        }
+    }
+
+    void OnDoubleClick(LoyalityTypeDisplayModel item)
+    {
+        if (item == null) return;
+
+        if (selectedLoyalityType == LoyalityTypeKey.CASHBACK && item.CardType.HasValue)
+        {
+            GoTo($"edit_loyality_setting/{selectedLoyalityType}/{item.Id}/{item.CardType}");
+        }
+        else
+        {
+            GoTo($"edit_loyality_setting/{selectedLoyalityType}/{item.Id}");
+        }
+    }
+
+    void DeleteFileFromServer(string filePath)
+    {
+        try
+        {
+            var fullPath = Path.Combine(webHostEnvironment.WebRootPath, filePath.TrimStart('/'));
+            if (File.Exists(fullPath))
+                File.Delete(fullPath);
+        }
+        catch (Exception ex)
+        {
+            logger?.LogError(ex, "Error deleting file: {FilePath}", filePath);
+        }
+    }
+
+    BadgeStyle GetBadgeStyle(CardType cardType)
+    {
+        return cardType switch
+        {
+            CardType.Common => BadgeStyle.Light,
+            CardType.Silver => BadgeStyle.Info,
+            CardType.Gold => BadgeStyle.Warning,
+            _ => BadgeStyle.Secondary
+        };
+    }
+}

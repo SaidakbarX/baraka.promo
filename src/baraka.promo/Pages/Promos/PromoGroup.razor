@@ -1,0 +1,186 @@
+﻿@page "/promo-group"
+
+@using baraka.promo.Models
+@using baraka.promo.Models.PromoModels.NewPromoModels
+@using baraka.promo.Pages.Promos.PromoListPage
+@using baraka.promo.Services.PromGroup
+@inherits BaseRazorComponent
+@inject PromoGroupService promoGroupService
+
+@inject DialogService DialogService
+
+<CascadingValue Value="this">
+    <div style="display:flex; justify-content:space-between; align-items:center; background-color:lightgray; padding:0px 10px; width:100%;">
+        <RadzenMenu Style="display:flex; justify-content:space-between; background-color:lightgray;" @attributes="@(new Dictionary<string, object>() { { "class", "header-menu-btn-toolbar" } })">
+
+            <div style="display:flex;  gap:10px; width:100%;">
+                @if (!ListPage)
+                {
+                    <span class="header-text" style="display:flex; justify-content:center; align-items:center;">Промо группы</span>
+
+                    <RadzenMenuItemEx Icon="add_circle" Click="@(e=>OpenAddUpdate())" Text="Добавить"></RadzenMenuItemEx>
+                    @* <RadzenMenuItemEx Icon="label" Click="@(e=>GoTo("/"))" Text="Промо"></RadzenMenuItemEx> *@
+                }
+                @if (selectedItem != null && !ListPage && selectedItem.Id != 0)
+                {
+                    <RadzenMenuItemEx Icon="edit" Text="Редактировать" Click="@(args => { Edit(selectedItem); })"></RadzenMenuItemEx>
+                    <RadzenMenuItemEx Icon="delete" Text="Удалить"
+                                      Click="@(args => confirm!.Show("Удаление", $"Подтвердите удаление {selectedItem.Name}?", selectedItem))"></RadzenMenuItemEx>
+                }
+
+            </div>
+        </RadzenMenu>
+        @if (!ListPage)
+        {
+            <div style="display:flex; flex-direction:row; gap:10px; align-items:center;">
+                <RadzenTextBox @bind-Value="searchTextValue"></RadzenTextBox>
+                <RadzenButton Click="LoadData" Text="Поиск"></RadzenButton>
+            </div>
+        }
+    </div>
+
+    <RadzenGrid @ref="grid"
+                Count="_total" Data="@promoGroups"
+                LoadData="@LoadData" AllowSorting="false" TItem="PromoGroupModel"
+                Page="@(e=> PageIndexChanged(e))"
+                AllowFiltering="false" AllowPaging="true" PageSize="_pageSize" Style="height:calc(100vh - 200px)"
+                ExpandMode="DataGridExpandMode.Single"
+                RowRender="@RowRender"
+                RowExpand="RowExpand"
+                Value="@selectedItem" RowSelect="@(args => selectedItem = args)"
+                RowDoubleClick="@(args =>{ Edit(args);})">
+
+        <Template Context="PromoGroupModel">
+            <div class="d-flex flex-column" style="padding:10px;">
+                <GroupedPromoList IsArchive="@IsArchive"
+                                  GroupId="selectedItem?.Id ?? 0"
+                                  SelectionChanged="RowSelect"
+                                  FromGroupped="true"
+                                  NotGroupped="false"
+                                  searchTextValue="@searchTextValue"
+                                  SelectedAuditoryTypes="@SelectedAuditoryTypes"
+                                  SelectedMachanicTypes="@SelectedMachanicTypes" />
+            </div>
+
+        </Template>
+        <Columns>
+            <RadzenGridColumn TItem="PromoGroupModel" Property="Name" Title="Название" />
+            <RadzenGridColumn TItem="PromoGroupModel" Property="Description" Title="Описание" />
+            <RadzenGridColumn TItem="PromoGroupModel" Property="ModifiedBy" Title="Автор" />
+            @if (ListPage)
+            {
+                <RadzenGridColumn TItem="PromoGroupModel" Property="MemberCount" Title="Количество участников" />
+            }
+        </Columns>
+    </RadzenGrid>
+
+    <Confirm TItem="PromoGroupModel" WithCard="false" @ref="confirm" OnConfirm="OnConfirmDelete" />
+</CascadingValue>
+
+
+
+@code {
+    [Parameter]
+    public bool ListPage { get; set; }
+    [Parameter]
+    public EventCallback<PromoModel> SelectionChanged { get; set; }
+    [Parameter]
+    public bool IsArchive { get; set; }
+    [Parameter]
+    public bool FromGroupped { get; set; }
+    
+    [Parameter]
+    public string searchTextValue { get; set; } = "";
+    
+    [Parameter]
+    public List<string> SelectedMachanicTypes { get; set; } = new();
+    [Parameter]
+    public List<string> SelectedAuditoryTypes { get; set; } = new();
+
+
+
+    public void RowSelect(PromoModel promo)
+    {
+        SelectionChanged.InvokeAsync(promo);
+    }
+
+    List<PromoGroupModel> promoGroups = new();
+    PromoGroupModel? selectedItem;
+    Confirm<PromoGroupModel>? confirm;
+    RadzenGrid<PromoGroupModel> grid;
+
+    protected override void OnInitialized()
+    {
+        _pageSize = 20;
+    }
+
+    async Task Edit(PromoGroupModel edit)
+    {
+        if (!ListPage && edit.Id != 0)
+        {
+            selectedItem = edit;
+            await DialogService.OpenAsync<AddPromoGroup>("Изменить промо группу",
+            new Dictionary<string, object> { { "Model", edit }, { "PromoGroup", this } });
+        }
+        else
+        {
+
+        }
+
+    }
+
+    public async Task OpenAddUpdate()
+    {
+        await DialogService.OpenAsync<AddPromoGroup>("Добавление промо группа",
+        new Dictionary<string, object> { { "Model", new PromoGroupModel() }, { "PromoGroup", this } });
+    }
+
+
+    public void Load(bool isArchive = true)
+    {
+        IsArchive = isArchive;
+        LoadData();
+        DialogService.Close();
+    }
+    public void Load(bool isArchive, List<string> promoMachanics, List<string> promoAuditoria, string search)
+    {
+
+        SelectedMachanicTypes = promoMachanics;
+        SelectedAuditoryTypes = promoAuditoria;
+        searchTextValue = search;
+        IsArchive = isArchive;
+        LoadData();
+        if (grid != null)
+            grid.Reload();
+
+        DialogService.Close();
+    }
+
+
+    void RowRender(RowRenderEventArgs<PromoGroupModel> args)
+    {
+        args.Expandable = ListPage;
+    }
+
+    void RowExpand(PromoGroupModel model)
+    {
+        selectedItem = model;
+        StateHasChanged();
+    }
+    protected override async void LoadData()
+    {
+        selectedItem = null;
+        _loading = true;
+        var res = await promoGroupService.List(_pageSkip, _pageSize, searchTextValue, SelectedMachanicTypes, SelectedAuditoryTypes, IsArchive);
+        _total = res.Total;
+        promoGroups = res.List;
+
+        StateHasChanged();
+        _loading = false;
+    }
+    async void OnConfirmDelete(PromoGroupModel model)
+    {
+        var res = await promoGroupService.Delete(model.Id);
+        if (res) LoadData();
+    }
+}
